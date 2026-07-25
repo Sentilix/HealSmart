@@ -1,7 +1,7 @@
 <Project ToolsVersion="4.0" DefaultTargets="Deploy" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Default</Configuration>
-    <Name>HealSmart</Name>
+    <Name>healsmart</Name>
     <ProjectGuid>ab74c922-a780-4aab-806e-1fd7ce8f9f5a</ProjectGuid>
     <AssemblyName>HealSmart</AssemblyName>
     <RootNamespace>HealSmart</RootNamespace>
@@ -10,7 +10,7 @@
     <OutputPath>.</OutputPath>
   </PropertyGroup>
   <ItemGroup>
-    <Content Include="HealSmart.toc">
+    <Content Include="healsmart.toc">
       <SubType>TableOfContents</SubType>
     </Content>
     <Content Include="healsmartcore.lua">
