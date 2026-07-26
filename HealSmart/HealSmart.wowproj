@@ -10,6 +10,7 @@
     <OutputPath>.</OutputPath>
   </PropertyGroup>
   <ItemGroup>
+    <Content Include="CHANGELOG.md" />
     <Content Include="healsmart.toc">
       <SubType>TableOfContents</SubType>
     </Content>
