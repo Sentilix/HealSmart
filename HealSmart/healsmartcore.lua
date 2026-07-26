@@ -1,13 +1,19 @@
 -- ==========================================
--- HealSmart - Core Engine (v0.3.0 Raid)
+-- HealSmart - Core Engine (v0.3.0 Roster Caching)
 -- ==========================================
 
 local activeHealers = {}
 local sortedHealers = {}
 
+-- Fast dictionary mapping: [CharacterName] = "CLASS_TOKEN"
+local groupRosterCache = {}
+
 local isSessionActive = false      
 local inTrueCombat = false         
 local timeSinceCombatEnd = 0
+
+local currentFilterMode = "ALL"
+local _, playerClassFilename = UnitClass("player")
 
 local ALLOWED_CLASSES = {
     ["PRIEST"] = true,
@@ -18,18 +24,55 @@ local ALLOWED_CLASSES = {
 
 local coreFrame = CreateFrame("Frame")
 
--- 1. Sort the database and push it to the UI
+-- 1. Scan the group/raid and build a name-to-class dictionary
+local function UpdateGroupRosterCache()
+    table.wipe(groupRosterCache)
+    
+    -- Always cache the player first
+    local playerName = UnitName("player")
+    local _, playerClass = UnitClass("player")
+    if playerName and playerClass then
+        groupRosterCache[playerName] = playerClass
+    end
+    
+    -- Scan party or raid group
+    local numGroupMembers = GetNumGroupMembers()
+    if numGroupMembers > 0 then
+        local isRaid = IsInRaid()
+        local prefix = isRaid and "raid" or "party"
+        
+        -- Party loop only checks party1-4, so we must include player for party mode manually
+        local loopMax = isRaid and numGroupMembers or (numGroupMembers - 1)
+        
+        for i = 1, loopMax do
+            local unit = prefix .. i
+            local name = UnitName(unit)
+            if name then
+                local _, classToken = UnitClass(unit)
+                if classToken then
+                    groupRosterCache[name] = classToken
+                end
+            end
+        end
+    end
+end
+
+-- 2. Sort the database and push it to the UI
 local function RefreshHealingStats()
     table.wipe(sortedHealers)
 
     for guid, data in pairs(activeHealers) do
-        local total = data.effective + data.overheal
-        if total > 0 then
-            data.percent = (data.effective / total) * 100
+        if currentFilterMode == "CLASS" and data.class ~= playerClassFilename then
+            -- Filtered out
         else
-            data.percent = 0
+            local total = data.effective + data.overheal
+            if total > 0 then
+                data.percent = (data.effective / total) * 100
+            else
+                data.percent = 0
+            end
+            table.insert(sortedHealers, data)
         end
-        table.insert(sortedHealers, data)
     end
 
     if #sortedHealers == 0 then
@@ -37,7 +80,6 @@ local function RefreshHealingStats()
         return
     end
 
-    -- SORTING: 100% highest efficiency at the top, tied scores sorted alphabetically
     table.sort(sortedHealers, function(a, b)
         if a.percent == b.percent then
             return a.name < b.name
@@ -50,7 +92,17 @@ local function RefreshHealingStats()
     end
 end
 
--- 2. Combat log parser
+function HealSmart_ToggleClassFilter()
+    if currentFilterMode == "ALL" then
+        currentFilterMode = "CLASS"
+    else
+        currentFilterMode = "ALL"
+    end
+    RefreshHealingStats()
+    return currentFilterMode
+end
+
+-- 3. Combat log parser
 local function OnCombatLogEvent()
     if not isSessionActive then return end
 
@@ -69,17 +121,13 @@ local function OnCombatLogEvent()
                               (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
                               (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
 
-        if isGroupMember then
-            local _, classFilename = GetPlayerInfoByGUID(sourceGUID)
+        if isGroupMember and sourceName then
+            local cleanName = string.match(sourceName, "([^-]+)")
             
-            -- Fallback: If player is you, get class directly
-            if not classFilename and sourceGUID == UnitGUID("player") then
-                _, classFilename = UnitClass("player")
-            end
+            -- LOOKUP VIA NAME CACHE: Instantly find the class from our roster table
+            local classFilename = groupRosterCache[cleanName]
 
             if classFilename and ALLOWED_CLASSES[classFilename] then
-                local cleanName = string.match(sourceName, "([^-]+)")
-
                 if not activeHealers[sourceGUID] then
                     activeHealers[sourceGUID] = { name = cleanName, class = classFilename, effective = 0, overheal = 0, percent = 0 }
                 end
@@ -90,32 +138,26 @@ local function OnCombatLogEvent()
             end
         end
 
-    -- --- B: SHIELDS & ABSORBS (Skudsikker udpakning) ---
+    -- --- B: SHIELDS & ABSORBS ---
     elseif eventType == "SPELL_ABSORBED" then
-        -- We unpack ALL arguments systematically to avoid dynamic offset shift issues
         local allArgs = { CombatLogGetCurrentEventInfo() }
+        local shieldCasterGUID, shieldCasterName, shieldCasterFlags, shieldAbsorbAmount, absorbSpellName
         
-        local shieldCasterGUID, shieldCasterName, shieldCasterFlags, shieldAbsorbAmount
-        
-        -- In WoW Classic Era, SPELL_ABSORBED always places its payload at the absolute end of the array.
-        -- The last 4 arguments are ALWAYS: absorbSpellId, absorbSpellName, absorbSpellSchool, absorbAmount
-        -- The 4 arguments right BEFORE those are ALWAYS: casterGUID, casterName, casterFlags, casterRaidFlags
         local numArgs = #allArgs
         if numArgs >= 19 then
+            absorbSpellName = allArgs[numArgs - 2]
             shieldCasterGUID = allArgs[numArgs - 7]
             shieldCasterName = allArgs[numArgs - 6]
             shieldCasterFlags = allArgs[numArgs - 5]
             shieldAbsorbAmount = allArgs[numArgs]
         end
 
-        if shieldCasterGUID and shieldAbsorbAmount and shieldCasterGUID ~= "" then
+        if absorbSpellName == "Power Word: Shield" and shieldCasterGUID and shieldAbsorbAmount and shieldCasterGUID ~= "" and shieldCasterName then
             local isGroupMember = (bit.band(shieldCasterFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
                                   (bit.band(shieldCasterFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
                                   (bit.band(shieldCasterFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
 
             if isGroupMember then
-                -- Hardcoded optimization: In Classic Vanilla, only Priests cast Power Word: Shield!
-                -- This bypasses the buggy GetPlayerInfoByGUID function completely for absorbs.
                 local classFilename = "PRIEST"
                 local cleanName = string.match(shieldCasterName, "([^-]+)")
 
@@ -134,6 +176,8 @@ end
 coreFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 coreFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
 coreFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+coreFrame:RegisterEvent("GROUP_ROSTER_UPDATE")   -- Fired when players join/leave or shift groups
+coreFrame:RegisterEvent("PLAYER_ENTERING_WORLD") -- Fired when loading into a raid zone/instance
 
 coreFrame:SetScript("OnEvent", function(self, event, ...)
     if event == "COMBAT_LOG_EVENT_UNFILTERED" then
@@ -149,8 +193,13 @@ coreFrame:SetScript("OnEvent", function(self, event, ...)
     elseif event == "PLAYER_REGEN_ENABLED" then
         inTrueCombat = false
         timeSinceCombatEnd = 0
+    elseif event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
+        UpdateGroupRosterCache()
     end
 end)
+
+-- Initial scan upon addon startup
+UpdateGroupRosterCache()
 
 -- 5. Grace period ticker
 coreFrame:SetScript("OnUpdate", function(self, elapsed)
