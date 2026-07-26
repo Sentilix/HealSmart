@@ -4,8 +4,8 @@
 
 -- Global constants (Easy to modify or convert to settings later)
 HEALSMART_WINDOW_WIDTH = 200
-HEALSMART_WINDOW_HEIGHT = 16 -- Configurable window height (Changed from 20 to 16)
-HEALSMART_REFRESH_WINDOW = 60 -- Sliding time window in seconds
+HEALSMART_WINDOW_HEIGHT = 16 
+HEALSMART_OUT_OF_COMBAT_GRACE = 5 -- Seconds to keep tracking after combat ends
 
 -- Colors (Red, Green, Blue, Alpha)
 local COLOR_EFFECTIVE = {0.1, 0.5, 0.9, 1.0}   -- Light blue (Effective healing)
@@ -73,7 +73,7 @@ function HealSmart_UpdateBar(effectivePercent, textString)
     text:SetText(textString)
 end
 
--- Temporary test data to visualize the frame in-game
-HealSmart_UpdateBar(55, "55%")
+-- Initialize with no healing text
+HealSmart_UpdateBar(0, "--%")
 
 -- end healsmartui.lua
