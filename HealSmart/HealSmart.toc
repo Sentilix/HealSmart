@@ -1,8 +1,8 @@
 ## Title: HealSmart
-## Version: 0.3.0
+## Version: 0.4.0
 ## Author: mimma @ EU-pyrewood village
 ## Interface: 11509
+## SavedVariablesPerCharacter: HealSmartSettings
 
 healsmartui.lua
 healsmartcore.lua
-

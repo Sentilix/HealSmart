@@ -1,11 +1,12 @@
 -- ==========================================
--- HealSmart - UI & Constants (v0.3.0 Filter Toggle)
+-- HealSmart - UI & Constants (v0.4.0 Mana Update) - PART 1
 -- ==========================================
 
 HEALSMART_BAR_HEIGHT = 16
 HEALSMART_BAR_GAP = 2
 HEALSMART_HEADER_HEIGHT = 20
 HEALSMART_OUT_OF_COMBAT_GRACE = 5
+HEALSMART_MANA_THRESHOLD = 300 -- NEW: Minimum mana consumed before HPM is calculated
 
 HEALSMART_MIN_WIDTH = 150
 HEALSMART_MIN_HEIGHT = 110 
@@ -14,8 +15,6 @@ local uiBars = {}
 
 -- 1. Create the Main Window Frame (Container)
 local container = CreateFrame("Frame", "HealSmartContainer", UIParent)
-container:SetSize(200, HEALSMART_MIN_HEIGHT) 
-container:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
 container:SetClampedToScreen(true)
 container:SetResizable(true)
 
@@ -23,15 +22,29 @@ if container.SetResizeBounds then
     container:SetResizeBounds(HEALSMART_MIN_WIDTH, HEALSMART_MIN_HEIGHT, 1000, 1000)
 end
 
+-- Draggable logic
 container:SetMovable(true)
 container:EnableMouse(true)
 container:RegisterForDrag("LeftButton")
 container:SetScript("OnDragStart", function(self) if IsShiftKeyDown() then self:StartMoving() end end)
-container:SetScript("OnDragStop", function(self) self:StopMovingOrSizing() end)
+container:SetScript("OnDragStop", function(self) 
+    self:StopMovingOrSizing()
+    if HealSmartSettings then
+        local point, _, relativePoint, xOfs, yOfs = self:GetPoint()
+        HealSmartSettings.point = point
+        HealSmartSettings.relativePoint = relativePoint
+        HealSmartSettings.xOfs = xOfs
+        HealSmartSettings.yOfs = yOfs
+    end
+end)
 
 local bgTexture = container:CreateTexture(nil, "BACKGROUND", nil, -8)
 bgTexture:SetAllPoints(container)
 bgTexture:SetColorTexture(0, 0, 0, 0.4)
+
+-- ==========================================
+-- HealSmart - UI (v0.4.0) - PART 2
+-- ==========================================
 
 -- 2. Create the Header Bar
 local header = CreateFrame("Frame", nil, container)
@@ -45,10 +58,10 @@ headerBg:SetColorTexture(0.05, 0.15, 0.3, 1.0) -- Dark Navy Blue
 
 local headerText = header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 headerText:SetPoint("LEFT", header, "LEFT", 6, 0)
-headerText:SetText("HealSmart v0.3.0")
+headerText:SetText("HealSmart v0.4.0")
 headerText:SetTextColor(1, 1, 1, 1) 
 
--- NEW: Add a Filter Toggle Button in the top right of the header
+-- Filter Toggle Button ([ALL] / [MINE])
 local filterButton = CreateFrame("Button", nil, header)
 filterButton:SetSize(40, HEALSMART_HEADER_HEIGHT)
 filterButton:SetPoint("RIGHT", header, "RIGHT", -6, 0)
@@ -56,22 +69,42 @@ filterButton:SetPoint("RIGHT", header, "RIGHT", -6, 0)
 local filterText = filterButton:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 filterText:SetAllPoints(filterButton)
 filterText:SetJustifyH("RIGHT")
-filterText:SetText("[ALL]") -- Default text
-filterText:SetTextColor(0.1, 0.6, 1.0, 1.0) -- Bright light blue interactive text
+filterText:SetText("[ALL]") 
+filterText:SetTextColor(0.1, 0.6, 1.0, 1.0) 
 
 filterButton:SetScript("OnClick", function()
     if HealSmart_ToggleClassFilter then
         local currentFilter = HealSmart_ToggleClassFilter()
-        -- Update the button label based on active state
         if currentFilter == "ALL" then
             filterText:SetText("[ALL]")
             filterText:SetTextColor(0.1, 0.6, 1.0, 1.0)
         else
             filterText:SetText("[MINE]")
-            filterText:SetTextColor(1.0, 0.8, 0.0, 1.0) -- Yellow for "My Class" active
+            filterText:SetTextColor(1.0, 0.8, 0.0, 1.0)
         end
     end
 end)
+
+-- Navigation buttons (< and >) to flip virtual pages
+local nextButton = CreateFrame("Button", nil, header)
+nextButton:SetSize(16, HEALSMART_HEADER_HEIGHT)
+nextButton:SetPoint("RIGHT", filterButton, "LEFT", -4, 0)
+local nextText = nextButton:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+nextText:SetAllPoints(nextButton)
+nextText:SetText(">")
+nextText:SetTextColor(1, 1, 1, 0.8)
+
+local prevButton = CreateFrame("Button", nil, header)
+prevButton:SetSize(16, HEALSMART_HEADER_HEIGHT)
+prevButton:SetPoint("RIGHT", nextButton, "LEFT", -4, 0)
+local prevText = prevButton:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+prevText:SetAllPoints(prevButton)
+prevText:SetText("<")
+prevText:SetTextColor(1, 1, 1, 0.8)
+
+-- ==========================================
+-- HealSmart - UI (v0.4.0) - PART 3
+-- ==========================================
 
 -- 3. Create the Scrollable Area
 local scrollFrame = CreateFrame("ScrollFrame", "HealSmartScrollFrame", container, "UIPanelScrollFrameTemplate")
@@ -88,8 +121,14 @@ if HealSmartScrollFrameScrollBar then
 end
 
 local scrollChild = CreateFrame("Frame", nil, scrollFrame)
-scrollChild:SetSize(container:GetWidth() - 22, 1) 
 scrollFrame:SetScrollChild(scrollChild)
+
+-- Global text blocks inside the canvas for Page 0 and empty pages
+local infoText = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+infoText:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 6, -10)
+infoText:SetWidth(170)
+infoText:SetJustifyH("LEFT")
+infoText:SetText("")
 
 -- 4. Create the Interactive Resize Handle
 local resizeButton = CreateFrame("Button", nil, container)
@@ -106,6 +145,11 @@ resizeButton:SetScript("OnMouseUp", function(self, button)
     container:StopMovingOrSizing()
     local targetWidth = container:GetWidth() - 22
     scrollChild:SetWidth(targetWidth)
+    infoText:SetWidth(targetWidth - 10)
+    if HealSmartSettings then
+        HealSmartSettings.width = container:GetWidth()
+        HealSmartSettings.height = container:GetHeight()
+    end
     for _, bar in ipairs(uiBars) do
         bar:SetWidth(targetWidth)
         if bar.UpdateBorders then bar:UpdateBorders(targetWidth) end
@@ -119,8 +163,12 @@ local function CreateBorderLine(parent, point, relativePoint, x, y, width, heigh
     line:SetSize(width, height)
 end
 
--- 5. Factory function to create an individual healer bar
+-- ==========================================
+-- UPDATE TO healsmartui.lua - PART 4 (RENDERING SYNC FIX)
+-- ==========================================
+
 local function CreateHealerBar(index)
+    -- Fetch the exact, real-time width of the parent container frame
     local currentBarWidth = container:GetWidth() - 22
     local bar = CreateFrame("Frame", nil, scrollChild)
     bar:SetSize(currentBarWidth, HEALSMART_BAR_HEIGHT)
@@ -170,7 +218,7 @@ local function CreateHealerBar(index)
     leftText:SetPoint("LEFT", statusBar, "LEFT", 4, 0)
     leftText:SetJustifyH("LEFT")
 
-    local rightText = statusBar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    local rightText = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     rightText:SetPoint("RIGHT", bar, "RIGHT", -4, 0)
     rightText:SetJustifyH("RIGHT")
 
@@ -183,40 +231,133 @@ local function CreateHealerBar(index)
     return bar
 end
 
-function HealSmart_RenderRaidBars(sortedData)
-    for _, bar in ipairs(uiBars) do
-        bar:Hide()
-    end
+function HealSmart_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffective)
+    infoText:SetText("")
+    for _, bar in ipairs(uiBars) do bar:Hide() end
 
     local totalHeight = #sortedData * (HEALSMART_BAR_HEIGHT + HEALSMART_BAR_GAP)
     scrollChild:SetHeight(totalHeight)
-
+    
     local targetWidth = container:GetWidth() - 22
+
+    if viewType == "HEAL" then
+        headerText:SetText("1. Effective Heal")
+    elseif viewType == "EFFICIENCY" then
+        headerText:SetText("2. Efficiency %")
+    elseif viewType == "MANA" then
+        headerText:SetText("3. Mana Efficiency")
+    end
+
+    local function FormatDotNumber(numValue)
+        if numValue < 1000 then return tostring(numValue) end
+        local strValue = tostring(numValue)
+        local formatted = strValue
+        while true do
+            local newFormatted, k = string.gsub(formatted, "^(-?%d+)(%d%d%d)", '%1.%2')
+            if k == 0 then break end
+            formatted = newFormatted
+        end
+        return formatted
+    end
 
     for i, data in ipairs(sortedData) do
         local bar = uiBars[i] or CreateHealerBar(i)
-        
         bar:SetWidth(targetWidth)
         if bar.UpdateBorders then bar:UpdateBorders(targetWidth) end
         
         local color = RAID_CLASS_COLORS[data.class] or {r = 0.5, g = 0.5, b = 0.5}
-        
         bar.statusBar:SetStatusBarColor(color.r, color.g, color.b, 1.0)
-        bar.statusBar:SetValue(data.percent)
-        bar.leftText:SetText(data.name)
-        bar.rightText:SetText(string.format("%.0f%%", data.percent))
         
+        -- --- PAGE 1: Effective Healing ---
+        if viewType == "HEAL" then
+            local fillValue = (maxVal > 0) and ((data.effective / maxVal) * 100) or 0
+            bar.statusBar:SetValue(fillValue)
+            bar.leftText:SetText(data.name)
+            
+            local currentTotalRaid = totalRaidEffective or 1
+            if currentTotalRaid == 0 then currentTotalRaid = 1 end
+            local raidSharePercent = (data.effective / currentTotalRaid) * 100
+            local formattedAmt = FormatDotNumber(data.effective)
+            
+            bar.rightText:SetText(string.format("%s - %.1f%%", formattedAmt, raidSharePercent))
+            
+        -- --- PAGE 2: Efficiency % ---
+        elseif viewType == "EFFICIENCY" then
+            bar.statusBar:SetValue(data.percent)
+            bar.leftText:SetText(data.name)
+            
+            local grossHealing = data.effective + data.overheal
+            local formattedNet = FormatDotNumber(data.effective)
+            local formattedGross = FormatDotNumber(grossHealing)
+            
+            bar.rightText:SetText(string.format("%s / %s - %.0f%%", formattedNet, formattedGross, data.percent))
+            
+        -- --- PAGE 3: Mana Efficiency (HPM) ---
+        elseif viewType == "MANA" then
+            local fillValue = (maxVal > 0) and ((data.hpm / maxVal) * 100) or 0
+            bar.statusBar:SetValue(fillValue)
+            bar.leftText:SetText(data.name)
+            
+            -- If the healer hasn't spent enough mana yet, show a clean indicator
+            if data.manaUsed < HEALSMART_MANA_THRESHOLD then
+                bar.rightText:SetText(string.format("%s mana - 0.0 HPM", FormatDotNumber(data.manaUsed)))
+            else
+                bar.rightText:SetText(string.format("%s mana - %.1f HPM", FormatDotNumber(data.manaUsed), data.hpm))
+            end
+        end
         bar:Show()
     end
 end
 
+function HealSmart_RenderTextMessage(titleString, bodyString)
+    for _, bar in ipairs(uiBars) do bar:Hide() end
+    headerText:SetText(titleString)
+    infoText:SetText(bodyString)
+    scrollChild:SetHeight(120)
+end
+
 function HealSmart_ClearDisplay()
-    for _, bar in ipairs(uiBars) do
-        bar:Hide()
-    end
+    for _, bar in ipairs(uiBars) do bar:Hide() end
     scrollChild:SetHeight(1)
 end
 
-HealSmart_ClearDisplay()
+-- ==========================================
+-- UPDATE TO BOTTOM OF healsmartui.lua
+-- ==========================================
+nextButton:SetScript("OnClick", function() if HealSmart_ChangePage then HealSmart_ChangePage(1) end end)
+prevButton:SetScript("OnClick", function() if HealSmart_ChangePage then HealSmart_ChangePage(-1) end end)
+
+local loaderFrame = CreateFrame("Frame")
+loaderFrame:RegisterEvent("ADDON_LOADED")
+loaderFrame:SetScript("OnEvent", function(self, event, addonName)
+    if addonName == "HealSmart" then
+        if not HealSmartSettings then
+            HealSmartSettings = { width = 200, height = HEALSMART_MIN_HEIGHT, point = "CENTER", relativePoint = "CENTER", xOfs = 0, yOfs = 0, page = 0 }
+        end
+        if not HealSmartSettings.page then HealSmartSettings.page = 0 end
+
+        container:SetSize(HealSmartSettings.width, HealSmartSettings.height)
+        container:ClearAllPoints()
+        container:SetPoint(HealSmartSettings.point, UIParent, HealSmartSettings.relativePoint, HealSmartSettings.xOfs, HealSmartSettings.yOfs)
+        scrollChild:SetWidth(container:GetWidth() - 22)
+        infoText:SetWidth(container:GetWidth() - 32)
+        
+        if HealSmart_SetInitialPage then 
+            HealSmart_SetInitialPage(HealSmartSettings.page) 
+        end
+        
+        HealSmart_ClearDisplay()
+
+        -- MODERN TIMING FIX: Uses Blizzard's secure C_Timer to prevent frame script errors
+        C_Timer.After(1.0, function()
+            scrollChild:SetWidth(container:GetWidth() - 22)
+            if HealSmart_RefreshCurrentPage then 
+                HealSmart_RefreshCurrentPage() 
+            end
+        end)
+
+        self:UnregisterEvent("ADDON_LOADED")
+    end
+end)
 
 -- end healsmartui.lua
