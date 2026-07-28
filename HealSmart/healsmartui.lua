@@ -168,7 +168,6 @@ end
 -- ==========================================
 
 local function CreateHealerBar(index)
-    -- Fetch the exact, real-time width of the parent container frame
     local currentBarWidth = container:GetWidth() - 22
     local bar = CreateFrame("Frame", nil, scrollChild)
     bar:SetSize(currentBarWidth, HEALSMART_BAR_HEIGHT)
@@ -208,18 +207,27 @@ local function CreateHealerBar(index)
     rightLine:SetPoint("TOPRIGHT", bar, "TOPRIGHT", 0, 0)
     rightLine:SetSize(1, HEALSMART_BAR_HEIGHT)
 
+    -- The actual filling status bar color block
     local statusBar = CreateFrame("StatusBar", nil, bar)
     statusBar:SetPoint("TOPLEFT", bar, "TOPLEFT", 1, -1)
     statusBar:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", -1, 1)
     statusBar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
     statusBar:SetMinMaxValues(0, 100)
 
-    local leftText = statusBar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    leftText:SetPoint("LEFT", statusBar, "LEFT", 4, 0)
+    -- NEW CRITICAL LAYOUT FIX: Create a dedicated invisible overlay frame 
+    -- to host text elements, guaranteeing they float on top of the status bar texture.
+    local textOverlay = CreateFrame("Frame", nil, bar)
+    textOverlay:SetAllPoints(bar)
+    textOverlay:SetFrameLevel(statusBar:GetFrameLevel() + 5)
+
+    -- Left Text: Now safely created on textOverlay instead of statusBar
+    local leftText = textOverlay:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    leftText:SetPoint("LEFT", textOverlay, "LEFT", 4, 0)
     leftText:SetJustifyH("LEFT")
 
-    local rightText = bar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    rightText:SetPoint("RIGHT", bar, "RIGHT", -4, 0)
+    -- Right Text: Safely created on textOverlay and locked flush against the right container edge
+    local rightText = textOverlay:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    rightText:SetPoint("RIGHT", textOverlay, "RIGHT", -4, 0)
     rightText:SetJustifyH("RIGHT")
 
     bar.statusBar = statusBar
@@ -231,6 +239,9 @@ local function CreateHealerBar(index)
     return bar
 end
 
+-- ==========================================
+-- UPDATE TO healsmartui.lua (PAGE NAMES FIXED)
+-- ==========================================
 function HealSmart_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffective)
     infoText:SetText("")
     for _, bar in ipairs(uiBars) do bar:Hide() end
@@ -241,9 +252,9 @@ function HealSmart_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
     local targetWidth = container:GetWidth() - 22
 
     if viewType == "HEAL" then
-        headerText:SetText("1. Effective Heal")
+        headerText:SetText("1. Healing Done")
     elseif viewType == "EFFICIENCY" then
-        headerText:SetText("2. Efficiency %")
+        headerText:SetText("2. Heal vs Overheal")
     elseif viewType == "MANA" then
         headerText:SetText("3. Mana Efficiency")
     end
@@ -268,43 +279,47 @@ function HealSmart_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
         local color = RAID_CLASS_COLORS[data.class] or {r = 0.5, g = 0.5, b = 0.5}
         bar.statusBar:SetStatusBarColor(color.r, color.g, color.b, 1.0)
         
-        -- --- PAGE 1: Effective Healing ---
+        -- --- 1. SET VISUAL BAR FILLS FIRST ---
         if viewType == "HEAL" then
             local fillValue = (maxVal > 0) and ((data.effective / maxVal) * 100) or 0
             bar.statusBar:SetValue(fillValue)
-            bar.leftText:SetText(data.name)
-            
+        elseif viewType == "EFFICIENCY" then
+            bar.statusBar:SetValue(data.percent)
+        elseif viewType == "MANA" then
+            local fillValue = (maxVal > 0) and ((data.hpm / maxVal) * 100) or 0
+            bar.statusBar:SetValue(fillValue)
+        end
+        
+        -- --- 2. SET TEXT STRINGS ABSOLUTELY LAST ---
+        -- Doing this at the very end of the loop prevents the Blizzard StatusBar 
+        -- graphics engine from overriding or wiping our custom formatted labels.
+        bar.leftText:SetText(data.name)
+        
+        if viewType == "HEAL" then
             local currentTotalRaid = totalRaidEffective or 1
             if currentTotalRaid == 0 then currentTotalRaid = 1 end
             local raidSharePercent = (data.effective / currentTotalRaid) * 100
             local formattedAmt = FormatDotNumber(data.effective)
-            
             bar.rightText:SetText(string.format("%s - %.1f%%", formattedAmt, raidSharePercent))
             
-        -- --- PAGE 2: Efficiency % ---
         elseif viewType == "EFFICIENCY" then
-            bar.statusBar:SetValue(data.percent)
-            bar.leftText:SetText(data.name)
-            
             local grossHealing = data.effective + data.overheal
             local formattedNet = FormatDotNumber(data.effective)
             local formattedGross = FormatDotNumber(grossHealing)
-            
             bar.rightText:SetText(string.format("%s / %s - %.0f%%", formattedNet, formattedGross, data.percent))
             
-        -- --- PAGE 3: Mana Efficiency (HPM) ---
         elseif viewType == "MANA" then
-            local fillValue = (maxVal > 0) and ((data.hpm / maxVal) * 100) or 0
-            bar.statusBar:SetValue(fillValue)
-            bar.leftText:SetText(data.name)
-            
-            -- If the healer hasn't spent enough mana yet, show a clean indicator
-            if data.manaUsed < HEALSMART_MANA_THRESHOLD then
+            -- Fetch the dynamic threshold value synced by the core engine
+            local currentThreshold = HealSmart_CurrentThreshold or 0
+
+            -- Evaluate if the healer has crossed the active threshold barrier
+            if data.manaUsed < currentThreshold then
                 bar.rightText:SetText(string.format("%s mana - 0.0 HPM", FormatDotNumber(data.manaUsed)))
             else
                 bar.rightText:SetText(string.format("%s mana - %.1f HPM", FormatDotNumber(data.manaUsed), data.hpm))
             end
         end
+        
         bar:Show()
     end
 end

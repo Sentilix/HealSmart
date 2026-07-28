@@ -4,5 +4,6 @@
 ## Interface: 11509
 ## SavedVariablesPerCharacter: HealSmartSettings
 
+healsmartdb.lua
 healsmartui.lua
 healsmartcore.lua
