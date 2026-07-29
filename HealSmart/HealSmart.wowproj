@@ -14,6 +14,9 @@
     <Content Include="healsmart.toc">
       <SubType>TableOfContents</SubType>
     </Content>
+    <Content Include="healsmartcmd.lua">
+      <SubType>Code</SubType>
+    </Content>
     <Content Include="healsmartcore.lua">
       <SubType>Code</SubType>
     </Content>

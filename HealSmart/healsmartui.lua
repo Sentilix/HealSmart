@@ -1,12 +1,12 @@
 -- ==========================================
--- HealSmart - UI & Constants (v0.4.0 Mana Update) - PART 1
+-- HealSmart - UI & Constants (v0.5.0) - PART 1
 -- ==========================================
 
 HEALSMART_BAR_HEIGHT = 16
 HEALSMART_BAR_GAP = 2
 HEALSMART_HEADER_HEIGHT = 20
 HEALSMART_OUT_OF_COMBAT_GRACE = 5
-HEALSMART_MANA_THRESHOLD = 300 -- NEW: Minimum mana consumed before HPM is calculated
+HEALSMART_MANA_THRESHOLD = 300 
 
 HEALSMART_MIN_WIDTH = 150
 HEALSMART_MIN_HEIGHT = 110 
@@ -22,11 +22,13 @@ if container.SetResizeBounds then
     container:SetResizeBounds(HEALSMART_MIN_WIDTH, HEALSMART_MIN_HEIGHT, 1000, 1000)
 end
 
--- Draggable logic
+-- Draggable logic without Shift requirement
 container:SetMovable(true)
 container:EnableMouse(true)
 container:RegisterForDrag("LeftButton")
-container:SetScript("OnDragStart", function(self) if IsShiftKeyDown() then self:StartMoving() end end)
+container:SetScript("OnDragStart", function(self) 
+    if HealSmartSettings and not HealSmartSettings.locked then self:StartMoving() end 
+end)
 container:SetScript("OnDragStop", function(self) 
     self:StopMovingOrSizing()
     if HealSmartSettings then
@@ -43,7 +45,7 @@ bgTexture:SetAllPoints(container)
 bgTexture:SetColorTexture(0, 0, 0, 0.4)
 
 -- ==========================================
--- HealSmart - UI (v0.4.0) - PART 2
+-- HealSmart - UI (v0.5.0) - PART 2
 -- ==========================================
 
 -- 2. Create the Header Bar
@@ -54,56 +56,109 @@ header:SetPoint("TOPRIGHT", container, "TOPRIGHT", 0, 0)
 
 local headerBg = header:CreateTexture(nil, "BACKGROUND")
 headerBg:SetAllPoints(header)
-headerBg:SetColorTexture(0.05, 0.15, 0.3, 1.0) -- Dark Navy Blue
+headerBg:SetColorTexture(0.05, 0.15, 0.3, 1.0)
 
 local headerText = header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 headerText:SetPoint("LEFT", header, "LEFT", 6, 0)
-headerText:SetText("HealSmart v0.4.0")
 headerText:SetTextColor(1, 1, 1, 1) 
 
--- Filter Toggle Button ([ALL] / [MINE])
+-- Close Button [X] (Placed at the absolute top right corner)
+local closeButton = CreateFrame("Button", nil, header, "UIPanelCloseButton")
+closeButton:SetSize(18, 18)
+closeButton:SetPoint("RIGHT", header, "RIGHT", -2, 0)
+closeButton:SetScript("OnClick", function()
+    if HealSmart_HideMainWindow then HealSmart_HideMainWindow() end
+end)
+
+-- Filter Toggle Button (Now graphical using cool spell-art icons)
 local filterButton = CreateFrame("Button", nil, header)
-filterButton:SetSize(40, HEALSMART_HEADER_HEIGHT)
-filterButton:SetPoint("RIGHT", header, "RIGHT", -6, 0)
+filterButton:SetSize(14, 14)
+filterButton:SetPoint("RIGHT", closeButton, "LEFT", -4, 0)
 
-local filterText = filterButton:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-filterText:SetAllPoints(filterButton)
-filterText:SetJustifyH("RIGHT")
-filterText:SetText("[ALL]") 
-filterText:SetTextColor(0.1, 0.6, 1.0, 1.0) 
+-- ==========================================
+-- UPDATE TO healsmartui.lua - PART 2 (NEW ICON LOGIC)
+-- ==========================================
 
-filterButton:SetScript("OnClick", function()
-    if HealSmart_ToggleClassFilter then
-        local currentFilter = HealSmart_ToggleClassFilter()
-        if currentFilter == "ALL" then
-            filterText:SetText("[ALL]")
-            filterText:SetTextColor(0.1, 0.6, 1.0, 1.0)
-        else
-            filterText:SetText("[MINE]")
-            filterText:SetTextColor(1.0, 0.8, 0.0, 1.0)
+-- Global flag to store the current visual toggle state locally in the UI scope
+local isCurrentlyClassFiltered = false
+
+-- Clean array map holding the official Classic Era spell icons for each healer class
+local CLASS_ICON_MAP = {
+    ["DEFAULT"]  = "Interface\\Icons\\INV_Misc_QuestionMark",
+    ["ALL"]  = "Interface\\Icons\\inv_ore_arcanite_01",
+    ["PRIEST"]  = "Interface\\Icons\\Spell_Holy_WordFortitude",
+    ["SHAMAN"]  = "Interface\\Icons\\Spell_Nature_LightningShield",
+    ["PALADIN"] = "Interface\\Icons\\Spell_Holy_HolyDevotionAura",
+    ["DRUID"]   = "Interface\\Icons\\Spell_Nature_Regeneration"
+}
+
+function HealSmart_UpdateFilterVisuals(isFiltered)
+    isCurrentlyClassFiltered = isFiltered
+    
+    if isCurrentlyClassFiltered then
+        -- Lookup the icon path directly from our class array map
+        local _, playerClassFilename = UnitClass("player")
+        local classIcon = CLASS_ICON_MAP[playerClassFilename]       
+        if not classIcon then
+            classIcon = CLASS_ICON_MAP["DEFAULT"]
         end
+        
+        filterButton:SetNormalTexture(classIcon)
+    else
+        filterButton:SetNormalTexture(CLASS_ICON_MAP["ALL"])
+    end
+end
+
+-- Fixed click script: Toggles locally first to guarantee instant icon shifts, then notifies core
+filterButton:SetScript("OnClick", function()
+    -- 1. Flip the local UI state instantly
+    isCurrentlyClassFiltered = not isCurrentlyClassFiltered
+    HealSmart_UpdateFilterVisuals(isCurrentlyClassFiltered)
+    
+    -- 2. Notify the core engine to update data arrays using its background toggle pipeline
+    if HealSmart_ToggleClassFilter then
+        HealSmart_ToggleClassFilter()
     end
 end)
 
--- Navigation buttons (< and >) to flip virtual pages
+-- Graphical Next Page Button (Right Gold Arrow)
 local nextButton = CreateFrame("Button", nil, header)
-nextButton:SetSize(16, HEALSMART_HEADER_HEIGHT)
+nextButton:SetSize(14, 14)
 nextButton:SetPoint("RIGHT", filterButton, "LEFT", -4, 0)
-local nextText = nextButton:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-nextText:SetAllPoints(nextButton)
-nextText:SetText(">")
-nextText:SetTextColor(1, 1, 1, 0.8)
+nextButton:SetNormalTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up")
+nextButton:SetPushedTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Down")
 
+-- Graphical Previous Page Button (Left Gold Arrow)
 local prevButton = CreateFrame("Button", nil, header)
-prevButton:SetSize(16, HEALSMART_HEADER_HEIGHT)
+prevButton:SetSize(14, 14)
 prevButton:SetPoint("RIGHT", nextButton, "LEFT", -4, 0)
-local prevText = prevButton:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-prevText:SetAllPoints(prevButton)
-prevText:SetText("<")
-prevText:SetTextColor(1, 1, 1, 0.8)
+prevButton:SetNormalTexture("Interface\\Buttons\\UI-SpellbookIcon-PrevPage-Up")
+prevButton:SetPushedTexture("Interface\\Buttons\\UI-SpellbookIcon-PrevPage-Down")
+
+-- Lock Toggle Button (Uses Blizzards secure keyring lock textures)
+local lockButton = CreateFrame("Button", nil, header)
+lockButton:SetSize(14, 14)
+lockButton:SetPoint("RIGHT", prevButton, "LEFT", -4, 0)
+
+function HealSmart_UpdateLockVisuals(isLocked)
+    if isLocked then
+        lockButton:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton-KeyRingLock")
+        if resizeButton then resizeButton:Hide() end
+    else
+        lockButton:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton-KeyRingOpen")
+        if resizeButton then resizeButton:Show() end
+    end
+end
+
+lockButton:SetScript("OnClick", function()
+    if HealSmart_ToggleLockState then
+        local newState = HealSmart_ToggleLockState()
+        HealSmart_UpdateLockVisuals(newState)
+    end
+end)
 
 -- ==========================================
--- HealSmart - UI (v0.4.0) - PART 3
+-- HealSmart - UI (v0.5.0) - PART 3
 -- ==========================================
 
 -- 3. Create the Scrollable Area
@@ -114,7 +169,8 @@ scrollFrame:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -20, 2)
 if HealSmartScrollFrameScrollBar then
     local sb = HealSmartScrollFrameScrollBar
     sb:ClearAllPoints()
-    sb:SetPoint("TOPRIGHT", container, "TOPRIGHT", -2, -HEALSMART_HEADER_HEIGHT - 4)
+    -- FIXED ANCHOR: Stays on the absolute window edge, but drops 22 pixels down to clear the icons
+    sb:SetPoint("TOPRIGHT", container, "TOPRIGHT", 0, -37)
     sb:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -2, 20)
     if HealSmartScrollFrameScrollBarScrollUpButton then HealSmartScrollFrameScrollBarScrollUpButton:Hide() end
     if HealSmartScrollFrameScrollBarScrollDownButton then HealSmartScrollFrameScrollBarScrollDownButton:Hide() end
@@ -123,15 +179,13 @@ end
 local scrollChild = CreateFrame("Frame", nil, scrollFrame)
 scrollFrame:SetScrollChild(scrollChild)
 
--- Global text blocks inside the canvas for Page 0 and empty pages
 local infoText = scrollChild:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 infoText:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 6, -10)
 infoText:SetWidth(170)
 infoText:SetJustifyH("LEFT")
 infoText:SetText("")
 
--- 4. Create the Interactive Resize Handle
-local resizeButton = CreateFrame("Button", nil, container)
+resizeButton = CreateFrame("Button", nil, container)
 resizeButton:SetSize(16, 16)
 resizeButton:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -4, 2)
 resizeButton:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
@@ -156,15 +210,8 @@ resizeButton:SetScript("OnMouseUp", function(self, button)
     end
 end)
 
-local function CreateBorderLine(parent, point, relativePoint, x, y, width, height)
-    local line = parent:CreateTexture(nil, "OVERLAY")
-    line:SetColorTexture(0, 0, 0, 0.9)
-    line:SetPoint(point, parent, relativePoint, x, y)
-    line:SetSize(width, height)
-end
-
 -- ==========================================
--- UPDATE TO healsmartui.lua - PART 4 (RENDERING SYNC FIX)
+-- HealSmart - UI (v0.5.0) - PART 4
 -- ==========================================
 
 local function CreateHealerBar(index)
@@ -207,25 +254,20 @@ local function CreateHealerBar(index)
     rightLine:SetPoint("TOPRIGHT", bar, "TOPRIGHT", 0, 0)
     rightLine:SetSize(1, HEALSMART_BAR_HEIGHT)
 
-    -- The actual filling status bar color block
     local statusBar = CreateFrame("StatusBar", nil, bar)
     statusBar:SetPoint("TOPLEFT", bar, "TOPLEFT", 1, -1)
     statusBar:SetPoint("BOTTOMRIGHT", bar, "BOTTOMRIGHT", -1, 1)
     statusBar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
     statusBar:SetMinMaxValues(0, 100)
 
-    -- NEW CRITICAL LAYOUT FIX: Create a dedicated invisible overlay frame 
-    -- to host text elements, guaranteeing they float on top of the status bar texture.
     local textOverlay = CreateFrame("Frame", nil, bar)
     textOverlay:SetAllPoints(bar)
     textOverlay:SetFrameLevel(statusBar:GetFrameLevel() + 5)
 
-    -- Left Text: Now safely created on textOverlay instead of statusBar
     local leftText = textOverlay:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     leftText:SetPoint("LEFT", textOverlay, "LEFT", 4, 0)
     leftText:SetJustifyH("LEFT")
 
-    -- Right Text: Safely created on textOverlay and locked flush against the right container edge
     local rightText = textOverlay:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     rightText:SetPoint("RIGHT", textOverlay, "RIGHT", -4, 0)
     rightText:SetJustifyH("RIGHT")
@@ -239,16 +281,12 @@ local function CreateHealerBar(index)
     return bar
 end
 
--- ==========================================
--- UPDATE TO healsmartui.lua (PAGE NAMES FIXED)
--- ==========================================
 function HealSmart_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffective)
     infoText:SetText("")
     for _, bar in ipairs(uiBars) do bar:Hide() end
 
     local totalHeight = #sortedData * (HEALSMART_BAR_HEIGHT + HEALSMART_BAR_GAP)
     scrollChild:SetHeight(totalHeight)
-    
     local targetWidth = container:GetWidth() - 22
 
     if viewType == "HEAL" then
@@ -279,7 +317,6 @@ function HealSmart_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
         local color = RAID_CLASS_COLORS[data.class] or {r = 0.5, g = 0.5, b = 0.5}
         bar.statusBar:SetStatusBarColor(color.r, color.g, color.b, 1.0)
         
-        -- --- 1. SET VISUAL BAR FILLS FIRST ---
         if viewType == "HEAL" then
             local fillValue = (maxVal > 0) and ((data.effective / maxVal) * 100) or 0
             bar.statusBar:SetValue(fillValue)
@@ -290,9 +327,6 @@ function HealSmart_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
             bar.statusBar:SetValue(fillValue)
         end
         
-        -- --- 2. SET TEXT STRINGS ABSOLUTELY LAST ---
-        -- Doing this at the very end of the loop prevents the Blizzard StatusBar 
-        -- graphics engine from overriding or wiping our custom formatted labels.
         bar.leftText:SetText(data.name)
         
         if viewType == "HEAL" then
@@ -309,17 +343,13 @@ function HealSmart_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
             bar.rightText:SetText(string.format("%s / %s - %.0f%%", formattedNet, formattedGross, data.percent))
             
         elseif viewType == "MANA" then
-            -- Fetch the dynamic threshold value synced by the core engine
             local currentThreshold = HealSmart_CurrentThreshold or 0
-
-            -- Evaluate if the healer has crossed the active threshold barrier
             if data.manaUsed < currentThreshold then
                 bar.rightText:SetText(string.format("%s mana - 0.0 HPM", FormatDotNumber(data.manaUsed)))
             else
                 bar.rightText:SetText(string.format("%s mana - %.1f HPM", FormatDotNumber(data.manaUsed), data.hpm))
             end
         end
-        
         bar:Show()
     end
 end
@@ -336,20 +366,34 @@ function HealSmart_ClearDisplay()
     scrollChild:SetHeight(1)
 end
 
--- ==========================================
--- UPDATE TO BOTTOM OF healsmartui.lua
--- ==========================================
 nextButton:SetScript("OnClick", function() if HealSmart_ChangePage then HealSmart_ChangePage(1) end end)
 prevButton:SetScript("OnClick", function() if HealSmart_ChangePage then HealSmart_ChangePage(-1) end end)
+
+function HealSmart_ShowMainWindow()
+    if container then
+        container:Show()
+        if HealSmartSettings then HealSmartSettings.hidden = false end
+        if HealSmart_RefreshCurrentPage then HealSmart_RefreshCurrentPage() end
+    end
+end
+
+function HealSmart_HideMainWindow()
+    if container then
+        container:Hide()
+        if HealSmartSettings then HealSmartSettings.hidden = true end
+    end
+end
 
 local loaderFrame = CreateFrame("Frame")
 loaderFrame:RegisterEvent("ADDON_LOADED")
 loaderFrame:SetScript("OnEvent", function(self, event, addonName)
     if addonName == "HealSmart" then
         if not HealSmartSettings then
-            HealSmartSettings = { width = 200, height = HEALSMART_MIN_HEIGHT, point = "CENTER", relativePoint = "CENTER", xOfs = 0, yOfs = 0, page = 0 }
+            HealSmartSettings = { width = 200, height = HEALSMART_MIN_HEIGHT, point = "CENTER", relativePoint = "CENTER", xOfs = 0, yOfs = 0, page = 0, locked = false, hidden = false }
         end
         if not HealSmartSettings.page then HealSmartSettings.page = 0 end
+        if HealSmartSettings.locked == nil then HealSmartSettings.locked = false end
+        if HealSmartSettings.hidden == nil then HealSmartSettings.hidden = false end
 
         container:SetSize(HealSmartSettings.width, HealSmartSettings.height)
         container:ClearAllPoints()
@@ -361,14 +405,20 @@ loaderFrame:SetScript("OnEvent", function(self, event, addonName)
             HealSmart_SetInitialPage(HealSmartSettings.page) 
         end
         
+        if HealSmart_UpdateLockVisuals then HealSmart_UpdateLockVisuals(HealSmartSettings.locked) end
+        if HealSmart_UpdateFilterVisuals then HealSmart_UpdateFilterVisuals(false) end
+        
+        if HealSmartSettings.hidden then
+            container:Hide()
+        else
+            container:Show()
+        end
+        
         HealSmart_ClearDisplay()
 
-        -- MODERN TIMING FIX: Uses Blizzard's secure C_Timer to prevent frame script errors
         C_Timer.After(1.0, function()
             scrollChild:SetWidth(container:GetWidth() - 22)
-            if HealSmart_RefreshCurrentPage then 
-                HealSmart_RefreshCurrentPage() 
-            end
+            if HealSmart_RefreshCurrentPage then HealSmart_RefreshCurrentPage() end
         end)
 
         self:UnregisterEvent("ADDON_LOADED")
