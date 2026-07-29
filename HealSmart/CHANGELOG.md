@@ -2,6 +2,19 @@
 
 # HealSmart Changelog
 
+# HealSmart Changelog
+
+## v0.5.0
+* **Sleek Graphical Header:** Replaced all old text buttons (like `[ALL]`) with official WoW graphic icons for a much cleaner, built-in look.
+* **Smart Mini-Gear Lock:** Added a custom settings gear next to the arrows. It shines gold when locked and tints to a cool rust-orange when unlocked, letting you know instantly if the window can be moved.
+* **Pro Item Filtering:** The class filter button now uses a beautiful rainbow Arcanite Bar to show all healers, and instantly swaps to your own official class spell icon (like the Priest Stamina buff cross) when viewing just your own class.
+* **No-Shift Dragging:** Removed the annoying requirement to hold down `Shift` to move the meter. If the window is unlocked, you can now simply click and drag it anywhere on your screen instantly.
+* **Window Close Button [X]:** Added a standard Blizzard close button in the top right corner so you can hide the meter whenever you need a clean screen.
+* **Slash Commands (`/hs` & `/healsmart`):** Created a dedicated command engine. Typing `/hs`, `/hs open`, or `/healsmart` in chat now securely wakes up the main window and pops it back onto your screen if you hid it.
+* **Clean Button Layout:** Rearranged the button order in the header to feel much more intuitive, grouping navigation arrows together and putting system settings nicely on the right.
+* **Helpful Button Tooltips:** Added native game tooltips to every single button in the header. Hovering your mouse over any icon now instantly tells you exactly what it does (e.g., "Lock or Unlock Frame").
+* **Pixel-Perfect Alignment:** Adjusted button borders, micro-textures, and the scrollbar height to ensure no icons are clipped or squished, keeping the layout perfectly symmetrical.
+
 ## v0.4.0
 * **Sleek New Pages:** Added `<` and `>` arrow buttons in the top right. You can now flip through multiple stat screens like a pro without opening any extra windows.
 * **Page 0 (Welcome Screen):** A clean home screen that says welcome and shows a quick guide when you don't have any active combat data yet.
