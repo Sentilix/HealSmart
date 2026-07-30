@@ -17,6 +17,9 @@
     <Content Include="healsmartcmd.lua">
       <SubType>Code</SubType>
     </Content>
+    <Content Include="healsmartconfig.lua">
+      <SubType>Code</SubType>
+    </Content>
     <Content Include="healsmartcore.lua">
       <SubType>Code</SubType>
     </Content>

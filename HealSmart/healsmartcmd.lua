@@ -43,15 +43,12 @@ local function HealSmart_SlashCommandHandler(msg)
         
     elseif cmd == "resetui" then
         if HealSmartContainer and HealSmartSettings then
-            -- Wipe cached layouts and snap frame position securely back to default center screen coordinates
             HealSmartSettings.point = "CENTER"
             HealSmartSettings.relativePoint = "CENTER"
             HealSmartSettings.xOfs = 0
             HealSmartSettings.yOfs = 0
             HealSmartSettings.width = 200
             HealSmartSettings.height = 110
-            
-            -- NEW INTUITIVE OVERRIDE: Automatically unlock the frame upon layout reset executions
             HealSmartSettings.locked = false
             
             HealSmartContainer:SetSize(HealSmartSettings.width, HealSmartSettings.height)
@@ -62,7 +59,6 @@ local function HealSmart_SlashCommandHandler(msg)
                 HealSmartScrollFrameScrollBar:SetValue(0)
             end
             
-            -- NEW VISUAL SYNC: Instantly update the header options gear back to rust-orange and show the resize handle
             if HealSmart_UpdateLockVisuals then
                 HealSmart_UpdateLockVisuals(false)
             end
@@ -70,20 +66,29 @@ local function HealSmart_SlashCommandHandler(msg)
             HealSmart_Print("Window layout position successfully reset to center screen and UNLOCKED.")
         end
         
+    -- Direct configuration shortcut command utilizing the dynamic numeric ID bridge
+    elseif cmd == "config" or cmd == "options" then
+        if Settings and Settings.OpenToCategory and HealSmart_ConfigCategoryID then
+            -- Modern Era API pathing utilizing the verified internal number ID
+            Settings.OpenToCategory(HealSmart_ConfigCategoryID)
+        else
+            -- Legacy engine fallback pathing
+            InterfaceOptionsFrame_OpenToCategory("HealSmart")
+        end
+        
     elseif cmd == "version" then
         HealSmart_Print("Querying group members for installed addon versions...")
-        -- Broadcast a silent addon network ping through Raid or Party lines safely
         local targetChannel = IsInRaid() and "RAID" or (IsInGroup() and "PARTY" or "INSTANCE_CHAT")
         if IsInGroup() or IsInRaid() then
             C_ChatInfo.SendAddonMessage("HealSmartComm", "QUERY_VERSION:0", targetChannel)
         else
-            -- Self fallback loop if running solo
             HealSmart_Print(UnitName("player") .. " is running version 0.6.0")
         end
         
     elseif cmd == "help" then
         print("|cff00bcff--- HealSmart Slash Commands Help ---|r")
         print("|cff00ff00/hs|r or |cff00ff00/hs open|r - Opens and shows the main meter window.")
+        print("|cff00ff00/hs config|r - Opens the Blizzard Addon Options configuration panel directly.")
         print("|cff00ff00/hs resetui|r - Resets the window position back to the center of your screen.")
         print("|cff00ff00/hs version|r - Queries all group/raid members to check their addon versions.")
         print("|cff00ff00/hs help|r - Displays this command help overview layout screen.")

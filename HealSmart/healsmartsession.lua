@@ -84,16 +84,16 @@ function HealSmart_UpdateSessionListWindow()
     local overallBtn = sessionButtonsCache[rowIdx] or CreateSessionRow(rowIdx)
     overallBtn.titleText:SetText("[Overall Total]")
     
-    -- COLOR LOCK: Shines Yellow if active view matches Overall Total (-1), otherwise stays White
     if HealSmart_SelectedViewSessionID == -1 then
-        overallBtn.titleText:SetTextColor(1.0, 0.82, 0.0, 1.0) -- Blizzard Gold/Yellow
+        overallBtn.titleText:SetTextColor(1.0, 0.82, 0.0, 1.0)
     else
-        overallBtn.titleText:SetTextColor(1.0, 1.0, 1.0, 1.0) -- Pure White
+        overallBtn.titleText:SetTextColor(1.0, 1.0, 1.0, 1.0)
     end
     
     overallBtn:SetScript("OnClick", function()
         HealSmart_SelectedViewSessionID = -1 
-        if coreFrame and coreFrame.RefreshStats then coreFrame.RefreshStats() end
+        -- FIXED: Use the global refresh bridge to force a total layout recalculation instantly
+        if HealSmart_RefreshCurrentPage then HealSmart_RefreshCurrentPage() end
         sessionFrame:Hide()
     end)
     overallBtn:Show()
@@ -107,7 +107,6 @@ function HealSmart_UpdateSessionListWindow()
                 local btn = sessionButtonsCache[rowIdx] or CreateSessionRow(rowIdx)
                 btn.titleText:SetText(sessionData.id .. ": " .. sessionData.name)
                 
-                -- INTERACTIVE COLOR MATCHING: Evaluates precisely what session ID is active on your screen right now
                 local isCurrentLiveSlot = (i == HealSmartSettings.activeSessionIndex)
                 local isThisSelected = false
                 
@@ -118,18 +117,19 @@ function HealSmart_UpdateSessionListWindow()
                 end
                 
                 if isThisSelected then
-                    btn.titleText:SetTextColor(1.0, 0.82, 0.0, 1.0) -- Yellow for the SELECTED viewport
+                    btn.titleText:SetTextColor(1.0, 0.82, 0.0, 1.0)
                 else
-                    btn.titleText:SetTextColor(1.0, 1.0, 1.0, 1.0) -- White for unselected options
+                    btn.titleText:SetTextColor(1.0, 1.0, 1.0, 1.0)
                 end
                 
                 btn:SetScript("OnClick", function()
                     if i == HealSmartSettings.activeSessionIndex then
-                        HealSmart_SelectedViewSessionID = 0 -- View active fight
+                        HealSmart_SelectedViewSessionID = 0
                     else
-                        HealSmart_SelectedViewSessionID = sessionData.id -- View historic ID
+                        HealSmart_SelectedViewSessionID = sessionData.id
                     end
-                    if coreFrame and coreFrame.RefreshStats then coreFrame.RefreshStats() end
+                    -- FIXED: Use the global refresh bridge to force a total layout recalculation instantly
+                    if HealSmart_RefreshCurrentPage then HealSmart_RefreshCurrentPage() end
                     sessionFrame:Hide()
                 end)
                 btn:Show()

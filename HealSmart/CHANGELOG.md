@@ -1,8 +1,13 @@
 # HealSmart Changelog
 
-# HealSmart Changelog
-
-# HealSmart Changelog
+## v0.6.0
+* **20 Fight History Logs:** The addon now automatically records and saves up to 20 individual fight sessions, tracking your stats continuously across a full dungeon or raid night.
+* **Smart Auto-Naming:** New combat sessions are automatically named after the boss or area you pulled (e.g., "Onyxia (Onyxia's Lair)").
+* **FIFO Memory Safety:** Added an automated rolling memory cap that smoothly deletes the oldest saved battle when you reach session number 21, preventing any performance bloat.
+* **Taint-Free Session Frame:** Built a standalone popup selection window that rolls out cleanly on the right side of the main meter, keeping you 100% safe from Blizzard UI actionbar lockdown bugs.
+* **Color-Coded Status Tracker:** The session selector now formats fights as "ID: Name", highlighting your active view in bright Yellow and unselected history slots in clean White.
+* **Advanced Slash Options:** Upgraded the command matrix with `/hs help`, `/hs resetui` (which also centers and unlocks the layout), and a hidden version network pinger.
+* **Blizzard Interface Panel:** Added full Blizzard Options menu integration. Typing `/hs config` now opens up a native slider panel allowing you to adjust your session history cap between 5 and 100 on the fly.
 
 ## v0.5.0
 * **Sleek Graphical Header:** Replaced all old text buttons (like `[ALL]`) with official WoW graphic icons for a much cleaner, built-in look.

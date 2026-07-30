@@ -9,3 +9,4 @@ healsmartui.lua
 healsmartsession.lua
 healsmartcore.lua
 healsmartcmd.lua
+healsmartconfig.lua
