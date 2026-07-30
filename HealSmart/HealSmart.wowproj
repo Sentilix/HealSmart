@@ -23,6 +23,9 @@
     <Content Include="healsmartdb.lua">
       <SubType>Code</SubType>
     </Content>
+    <Content Include="healsmartsession.lua">
+      <SubType>Code</SubType>
+    </Content>
     <Content Include="healsmartui.lua">
       <SubType>Code</SubType>
     </Content>

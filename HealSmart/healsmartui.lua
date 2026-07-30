@@ -45,10 +45,10 @@ bgTexture:SetAllPoints(container)
 bgTexture:SetColorTexture(0, 0, 0, 0.4)
 
 -- ==========================================
--- HealSmart - UI (v0.5.0) - PART 2 (Button Order & Tooltips)
+-- HealSmart - UI (v0.6.0) - PART 2 (Unified Header Framework)
 -- ==========================================
 
--- 2. Create the Header Bar
+-- 2. Create the Header Bar (KEPT INTACT!)
 local header = CreateFrame("Frame", nil, container)
 header:SetHeight(HEALSMART_HEADER_HEIGHT)
 header:SetPoint("TOPLEFT", container, "TOPLEFT", 0, 0)
@@ -62,7 +62,7 @@ local headerText = header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 headerText:SetPoint("LEFT", header, "LEFT", 6, 0)
 headerText:SetTextColor(1, 1, 1, 1) 
 
--- Configuration variables for the filter button
+-- Configuration & Dictionaries
 local isCurrentlyClassFiltered = false
 local CLASS_ICON_MAP = {
     ["DEFAULT"]  = "Interface\\Icons\\INV_Misc_QuestionMark",
@@ -73,63 +73,12 @@ local CLASS_ICON_MAP = {
     ["DRUID"]    = "Interface\\Icons\\Spell_Nature_Regeneration"
 }
 
--- Close Button [X]
-local closeButton = CreateFrame("Button", nil, header, "UIPanelCloseButton")
-closeButton:SetSize(16, 16)
-closeButton:SetPoint("RIGHT", header, "RIGHT", -2, 0)
-closeButton:SetScript("OnClick", function()
-    if HealSmart_HideMainWindow then HealSmart_HideMainWindow() end
-end)
-closeButton:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
-    GameTooltip:SetText("Hide frame (use /hs to show again)", 1, 1, 1, 1, true)
-    GameTooltip:Show()
-end)
-closeButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+-- Forward declaration of layout objects to make functions globally secure inside this scope
+local filterButton, lockButton, nextButton, prevButton, sessionButton
 
--- Filter Toggle Button (10x10 square dimension)
-local filterButton = CreateFrame("Button", nil, header)
-filterButton:SetSize(10, 10)
-filterButton:SetPoint("RIGHT", closeButton, "LEFT", -2, -1)
-
-function HealSmart_UpdateFilterVisuals(isFiltered)
-    isCurrentlyClassFiltered = isFiltered
-    if isCurrentlyClassFiltered then
-        local playerClassFilename = string.upper(UnitClass("player"))
-        local classIcon = CLASS_ICON_MAP[playerClassFilename]       
-        if not classIcon then classIcon = CLASS_ICON_MAP["DEFAULT"] end
-        filterButton:SetNormalTexture(classIcon)
-    else
-        filterButton:SetNormalTexture(CLASS_ICON_MAP["ALL"])
-    end
-    if filterButton:GetNormalTexture() then
-        filterButton:GetNormalTexture():SetAllPoints(filterButton)
-    end
-end
-
-filterButton:SetScript("OnClick", function()
-    isCurrentlyClassFiltered = not isCurrentlyClassFiltered
-    HealSmart_UpdateFilterVisuals(isCurrentlyClassFiltered)
-    if HealSmart_ToggleClassFilter then HealSmart_ToggleClassFilter() end
-end)
-filterButton:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
-    GameTooltip:SetText("Toggle All classes or Current class", 1, 1, 1, 1, true)
-    GameTooltip:Show()
-end)
-filterButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
--- Lock Toggle Button (12x12 square dimension - Placed to the left of the filter button)
-local lockButton = CreateFrame("Button", nil, header)
-lockButton:SetSize(12, 12)
-lockButton:SetPoint("RIGHT", filterButton, "LEFT", -4, 0)
-lockButton:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
-
-if lockButton:GetNormalTexture() then
-    lockButton:GetNormalTexture():SetAllPoints(lockButton)
-end
-
+-- Visual Synchronization Engines
 function HealSmart_UpdateLockVisuals(isLocked)
+    if not lockButton then return end
     local normalTex = lockButton:GetNormalTexture()
     if isLocked then
         if normalTex then normalTex:SetVertexColor(1.0, 0.82, 0.0, 1.0) end -- Gold for LOCKED
@@ -140,6 +89,102 @@ function HealSmart_UpdateLockVisuals(isLocked)
     end
 end
 
+function HealSmart_UpdateFilterVisuals(isFiltered)
+    if not filterButton then return end
+    isCurrentlyClassFiltered = isFiltered
+    
+    if isCurrentlyClassFiltered then
+        local playerClassFilename = string.upper(UnitClass("player"))
+        local classIcon = CLASS_ICON_MAP[playerClassFilename]       
+        if not classIcon then classIcon = CLASS_ICON_MAP["DEFAULT"] end
+        filterButton:SetNormalTexture(classIcon)
+    else
+        filterButton:SetNormalTexture(CLASS_ICON_MAP["ALL"])
+    end
+
+    if filterButton:GetNormalTexture() then
+        filterButton:GetNormalTexture():SetAllPoints(filterButton)
+    end
+end
+
+-- Button Object Spawning & Anchoring
+
+-- Close Button [X]
+local closeButton = CreateFrame("Button", nil, header, "UIPanelCloseButton")
+closeButton:SetSize(16, 16)
+closeButton:SetPoint("RIGHT", header, "RIGHT", -2, 0)
+closeButton:SetScript("OnClick", function() if HealSmart_HideMainWindow then HealSmart_HideMainWindow() end end)
+closeButton:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
+    GameTooltip:SetText("Hide frame (use /hs to show again)", 1, 1, 1, 1, true)
+    GameTooltip:Show()
+end)
+closeButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+-- Filter Toggle Button (10x10)
+filterButton = CreateFrame("Button", nil, header)
+filterButton:SetSize(10, 10)
+filterButton:SetPoint("RIGHT", closeButton, "LEFT", -2, -1)
+filterButton:SetScript("OnClick", function()
+    isCurrentlyClassFiltered = not isCurrentlyClassFiltered
+    HealSmart_UpdateFilterVisuals(isCurrentlyClassFiltered)
+    if HealSmart_ToggleClassFilter then HealSmart_ToggleClassFilter() end
+end)
+filterButton:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
+    GameTooltip:SetText("Toggle All classes or current class", 1, 1, 1, 1, true)
+    GameTooltip:Show()
+end)
+filterButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+-- Graphical Next Page Button (14x14)
+nextButton = CreateFrame("Button", nil, header)
+nextButton:SetSize(14, 14)
+nextButton:SetPoint("RIGHT", filterButton, "LEFT", -2, 0)
+nextButton:SetNormalTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up")
+nextButton:SetPushedTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Down")
+nextButton:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
+    GameTooltip:SetText("Next page", 1, 1, 1, 1, true)
+    GameTooltip:Show()
+end)
+nextButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+-- Graphical Previous Page Button (14x14)
+prevButton = CreateFrame("Button", nil, header)
+prevButton:SetSize(14, 14)
+prevButton:SetPoint("RIGHT", nextButton, "LEFT", -2, 0)
+prevButton:SetNormalTexture("Interface\\Buttons\\UI-SpellbookIcon-PrevPage-Up")
+prevButton:SetPushedTexture("Interface\\Buttons\\UI-SpellbookIcon-PrevPage-Down")
+prevButton:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
+    GameTooltip:SetText("Previous page", 1, 1, 1, 1, true)
+    GameTooltip:Show()
+end)
+prevButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+-- Graphical History/Session Button (10x10)
+sessionButton = CreateFrame("Button", nil, header)
+sessionButton:SetSize(10, 10)
+sessionButton:SetPoint("RIGHT", prevButton, "LEFT", -2, 0)
+sessionButton:SetNormalTexture("Interface\\Icons\\INV_Misc_Note_02")
+if sessionButton:GetNormalTexture() then sessionButton:GetNormalTexture():SetAllPoints(sessionButton) end
+sessionButton:SetScript("OnClick", function()
+    if HealSmart_ToggleSessionWindow then HealSmart_ToggleSessionWindow() end
+end)
+sessionButton:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
+    GameTooltip:SetText("View Saved Fight Sessions", 1, 1, 1, 1, true)
+    GameTooltip:Show()
+end)
+sessionButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+-- Lock Toggle Button (12x12)
+lockButton = CreateFrame("Button", nil, header)
+lockButton:SetSize(12, 12)
+lockButton:SetPoint("RIGHT", sessionButton, "LEFT", -4, 0)
+lockButton:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
+if lockButton:GetNormalTexture() then lockButton:GetNormalTexture():SetAllPoints(lockButton) end
 lockButton:SetScript("OnClick", function()
     if HealSmartSettings then
         HealSmartSettings.locked = not HealSmartSettings.locked
@@ -152,32 +197,6 @@ lockButton:SetScript("OnEnter", function(self)
     GameTooltip:Show()
 end)
 lockButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
--- Graphical Next Page Button (14x14)
-local nextButton = CreateFrame("Button", nil, header)
-nextButton:SetSize(14, 14)
-nextButton:SetPoint("RIGHT", lockButton, "LEFT", -2, 0)
-nextButton:SetNormalTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Up")
-nextButton:SetPushedTexture("Interface\\Buttons\\UI-SpellbookIcon-NextPage-Down")
-nextButton:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
-    GameTooltip:SetText("Next page", 1, 1, 1, 1, true)
-    GameTooltip:Show()
-end)
-nextButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
--- Graphical Previous Page Button (14x14)
-local prevButton = CreateFrame("Button", nil, header)
-prevButton:SetSize(14, 14)
-prevButton:SetPoint("RIGHT", nextButton, "LEFT", -2, 0)
-prevButton:SetNormalTexture("Interface\\Buttons\\UI-SpellbookIcon-PrevPage-Up")
-prevButton:SetPushedTexture("Interface\\Buttons\\UI-SpellbookIcon-PrevPage-Down")
-prevButton:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
-    GameTooltip:SetText("Previous page", 1, 1, 1, 1, true)
-    GameTooltip:Show()
-end)
-prevButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
 -- NEW DYNAMIC COLOR ENGINE: Tint the standard texture dynamically via VertexColor
 function HealSmart_UpdateLockVisuals(isLocked)
@@ -195,14 +214,6 @@ function HealSmart_UpdateLockVisuals(isLocked)
         if resizeButton then resizeButton:Show() end
     end
 end
-
--- FIXED CLICK SCRIPT: Updates the database directly to prevent startup race conditions
-lockButton:SetScript("OnClick", function()
-    if HealSmartSettings then
-        HealSmartSettings.locked = not HealSmartSettings.locked
-        HealSmart_UpdateLockVisuals(HealSmartSettings.locked)
-    end
-end)
 
 function HealSmart_UpdateFilterVisuals(isFiltered)
     isCurrentlyClassFiltered = isFiltered
