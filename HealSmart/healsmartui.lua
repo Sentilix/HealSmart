@@ -459,7 +459,11 @@ function HealSmart_HideMainWindow()
     if container then
         container:Hide()
         if HealSmartSettings then HealSmartSettings.hidden = true end
-        print("|cff00bcffHealSmart:|r Window is hidden. You can show it again by typing /hs.")
+        
+        -- ROUTED: Now using the unified central print engine safely
+        if HealSmart_Print then
+            HealSmart_Print("Window is hidden. You can show it again by typing /hs.")
+        end
     end
 end
 
