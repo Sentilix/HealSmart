@@ -725,6 +725,80 @@ end)
 
 UpdateGroupRosterCache()
 
--- Remember to close the file with your signature block!
+-- ==========================================
+-- HealSmart - Core Engine (v0.7.0 Chat Exporter)
+-- ==========================================
+
+function HealSmart_ReportCurrentPageToChat()
+    if not sortedHealers or #sortedHealers == 0 then return end
+    if not HealSmartSettings then return end
+
+    local mode = HealSmartSettings.reportChannelMode or 1
+    local channelType = "SAY"
+    local channelNum = nil
+    local isSoloWhisperLoop = false
+
+    if mode == 1 then
+        -- FIXED AUTO ROUTING: Only use official party/raid lines if actively grouped, else fallback to local prints
+        if IsInRaid() then 
+            channelType = "RAID"
+        elseif IsInGroup() then 
+            channelType = "PARTY"
+        else 
+            isSoloWhisperLoop = true 
+        end
+    elseif mode == 2 then channelType = "SAY"
+    elseif mode == 3 then channelType = "YELL"
+    elseif mode == 4 then channelType = "GUILD"
+    elseif mode == 5 then 
+        channelType = "CHANNEL" 
+        channelNum = HealSmartSettings.reportCustomChannelNum or 1
+    end
+
+    local maxLines = HealSmartSettings.reportLinesLimit or 5
+    local linesToPost = math.min(maxLines, #sortedHealers)
+    if linesToPost <= 0 then return end
+
+    local baseTitle = HealSmart_PageTitles[HealSmart_CurrentActivePage] or "HealSmart Stats"
+    
+    -- Execute Text Outputs
+    if isSoloWhisperLoop then
+        if HealSmart_Print then HealSmart_Print("=== " .. baseTitle .. " ===") end
+    else
+        SendChatMessage("=== HealSmart: " .. baseTitle .. " ===", channelType, nil, channelNum)
+    end
+
+    for i = 1, linesToPost do
+        local data = sortedHealers[i]
+        if data then
+            local lineMessage = ""
+            
+            if HealSmart_CurrentActivePage == 1 then
+                local formattedAmt = FormatDotNumber and FormatDotNumber(data.effective) or data.effective
+                lineMessage = string.format("%d. %s - %s Effective Healing", i, data.name, formattedAmt)
+            elseif HealSmart_CurrentActivePage == 2 then
+                lineMessage = string.format("%d. %s - %.1f%% Healing Efficiency", i, data.name, data.percent)
+            elseif HealSmart_CurrentActivePage == 3 then
+                lineMessage = string.format("%d. %s - %.1f HPM", i, data.name, data.hpm)
+            elseif HealSmart_CurrentActivePage == 4 then
+                lineMessage = string.format("%d. %s - %d Dispels", i, data.name, data.dispels)
+            elseif HealSmart_CurrentActivePage == 5 then
+                lineMessage = string.format("%d. %s - %d Buffs", i, data.name, data.buffs)
+            elseif HealSmart_CurrentActivePage == 6 then
+                lineMessage = string.format("%d. %s - %d Deaths", i, data.name, data.deaths)
+            elseif HealSmart_CurrentActivePage == 7 then
+                lineMessage = string.format("%d. %s - %d Resurrects", i, data.name, data.resurrects)
+            end
+
+            if lineMessage ~= "" then
+                if isSoloWhisperLoop then
+                    if HealSmart_Print then HealSmart_Print(lineMessage) end
+                else
+                    SendChatMessage(lineMessage, channelType, nil, channelNum)
+                end
+            end
+        end
+    end
+end
 
 -- end healsmartcore.lua

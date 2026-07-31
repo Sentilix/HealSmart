@@ -163,22 +163,17 @@ prevButton:SetScript("OnEnter", function(self)
 end)
 prevButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
--- NEW: Graphical Master Reset Button (Sized to 14x14 to perfectly match next/prev arrows)
+-- Graphical Master Reset Button (14x14)
 resetButton = CreateFrame("Button", nil, header)
 resetButton:SetSize(14, 14)
-resetButton:SetPoint("RIGHT", prevButton, "LEFT", -2, 0) -- Perfect flush alignment
+resetButton:SetPoint("RIGHT", prevButton, "LEFT", -2, 0)
 resetButton:SetNormalTexture("Interface\\Buttons\\UI-RotationLeft-Button-Up")
-
 if resetButton:GetNormalTexture() then
     resetButton:GetNormalTexture():SetAllPoints(resetButton)
-    resetButton:GetNormalTexture():SetVertexColor(1.0, 0.82, 0.0, 1.0) -- Gold styling
+    resetButton:GetNormalTexture():SetVertexColor(1.0, 0.82, 0.0, 1.0)
 end
-
 resetButton:SetScript("OnClick", function()
-    -- Global trigger invoking Blizzard's official dialog confirmation framework safely
-    if HealSmart_TriggerResetDialog then
-        HealSmart_TriggerResetDialog()
-    end
+    if HealSmart_TriggerResetDialog then HealSmart_TriggerResetDialog() end
 end)
 resetButton:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
@@ -187,10 +182,56 @@ resetButton:SetScript("OnEnter", function(self)
 end)
 resetButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
--- Graphical History/Session Button (10x10 - FIXED ANCHOR: Tied to the left of the new resetButton)
+-- NEW: Graphical Shout/Report Button (Sized to 10x10 with dynamic tooltip overlay engine)
+local shoutButton = CreateFrame("Button", nil, header)
+shoutButton:SetSize(10, 10)
+shoutButton:SetPoint("RIGHT", resetButton, "LEFT", -4, 0) -- Fixed to 0y for straight alignment
+shoutButton:SetNormalTexture("Interface\\Icons\\Ability_Warrior_BattleShout")
+
+if shoutButton:GetNormalTexture() then
+    shoutButton:GetNormalTexture():SetAllPoints(shoutButton)
+end
+
+shoutButton:SetScript("OnClick", function()
+    if HealSmart_ReportCurrentPageToChat then
+        HealSmart_ReportCurrentPageToChat()
+    end
+end)
+
+shoutButton:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
+    
+    -- Local lookup dictionary for translation mapping
+    local channelNames = {
+        [1] = "/Raid or /Party",
+        [2] = "/say",
+        [3] = "/yell",
+        [4] = "/guild",
+        [5] = "Custom Channel"
+    }
+    
+    -- Fetch the active limits and channel paths from the settings database safely
+    local currentLines = HealSmartSettings and HealSmartSettings.reportLinesLimit or 5
+    local currentMode = HealSmartSettings and HealSmartSettings.reportChannelMode or 1
+    local channelText = channelNames[currentMode] or "Raid / Party"
+    
+    -- Append the channel number to the string if the selection is set to custom channel
+    if currentMode == 5 and HealSmartSettings and HealSmartSettings.reportCustomChannelNum then
+        channelText = "Channel " .. HealSmartSettings.reportCustomChannelNum
+    end
+    
+    -- Compile and show the dynamic live tooltip message screen
+    local dynamicTooltipText = string.format("Report Top %d to %s", currentLines, channelText)
+    GameTooltip:SetText(dynamicTooltipText, 1, 1, 1, 1, true)
+    GameTooltip:Show()
+end)
+
+shoutButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+-- Graphical History/Session Button (10x10 - FIXED ANCHOR: Tied to the left of the new 10x10 shoutButton)
 sessionButton = CreateFrame("Button", nil, header)
 sessionButton:SetSize(10, 10)
-sessionButton:SetPoint("RIGHT", resetButton, "LEFT", -4, 0)
+sessionButton:SetPoint("RIGHT", shoutButton, "LEFT", -4, 0) -- Back to 0y as it flushes with another square
 sessionButton:SetNormalTexture("Interface\\Icons\\INV_Misc_Note_02")
 if sessionButton:GetNormalTexture() then sessionButton:GetNormalTexture():SetAllPoints(sessionButton) end
 sessionButton:SetScript("OnClick", function()
@@ -206,7 +247,7 @@ sessionButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
 -- Lock Toggle Button (12x12 - FIXED ANCHOR: Tied to the left of sessionButton)
 lockButton = CreateFrame("Button", nil, header)
 lockButton:SetSize(12, 12)
-lockButton:SetPoint("RIGHT", sessionButton, "LEFT", -4, 0)
+lockButton:SetPoint("RIGHT", sessionButton, "LEFT", -4, 1)
 lockButton:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
 if lockButton:GetNormalTexture() then lockButton:GetNormalTexture():SetAllPoints(lockButton) end
 lockButton:SetScript("OnClick", function()

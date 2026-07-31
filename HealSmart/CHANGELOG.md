@@ -1,5 +1,12 @@
 # HealSmart Changelog
 
+## v0.7.0
+* **New Tracker Pages:** Added separate top lists for Dispels, Buffs, Deaths, and Resurrections.
+* **Chat Report Button:** Added an icon to blast top statistics directly into /Raid or /Party chat.
+* **Report Customization:** Added config options to change report lines (1-10) and target channels.
+* **Group-Join Automation:** Choose to clear, keep, or ask to reset history when joining a new group.
+* **Master Reset Button:** Added a simple header shortcut to wipe all night tracking data.
+
 ## v0.6.0
 * **20 Fight History Logs:** The addon now automatically records and saves up to 20 individual fight sessions, tracking your stats continuously across a full dungeon or raid night.
 * **Smart Auto-Naming:** New combat sessions are automatically named after the boss or area you pulled (e.g., "Onyxia (Onyxia's Lair)").
