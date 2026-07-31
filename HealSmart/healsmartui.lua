@@ -430,6 +430,9 @@ function HealSmart_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
         
         bar.leftText:SetText(data.name)
         
+        -- Dynamic layout title syncer utilizing the centralized global dictionary
+        headerText:SetText(viewTitle or HealSmart_PageTitles[HealSmart_CurrentActivePage] or "HealSmart")
+
         if viewType == "HEAL" then
             local currentTotalRaid = totalRaidEffective or 1
             if currentTotalRaid == 0 then currentTotalRaid = 1 end
@@ -450,6 +453,22 @@ function HealSmart_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
             else
                 bar.rightText:SetText(string.format("%s mana - %.1f HPM", FormatDotNumber(data.manaUsed), data.hpm))
             end
+            
+        elseif viewType == "DISPELS" then
+            bar.statusBar:SetValue((maxVal > 0) and ((data.dispels / maxVal) * 100) or 0)
+            bar.rightText:SetText(string.format("%d dispels", data.dispels))
+            
+        elseif viewType == "BUFFS" then
+            bar.statusBar:SetValue((maxVal > 0) and ((data.buffs / maxVal) * 100) or 0)
+            bar.rightText:SetText(string.format("%d buffs", data.buffs))
+            
+        elseif viewType == "DEATHS" then
+            bar.statusBar:SetValue((maxVal > 0) and ((data.deaths / maxVal) * 100) or 0)
+            bar.rightText:SetText(string.format("%d deaths", data.deaths))
+            
+        elseif viewType == "RESS" then
+            bar.statusBar:SetValue((maxVal > 0) and ((data.resurrects / maxVal) * 100) or 0)
+            bar.rightText:SetText(string.format("%d resurrects", data.resurrects))
         end
         bar:Show()
     end

@@ -1,6 +1,18 @@
 -- ==========================================
--- HealSmart - Database (v0.4.0 Extended)
+-- HealSmart - Global Constants & Database
 -- ==========================================
+
+-- Unified page titles shared across UI rendering and Core calculations
+HealSmart_PageTitles = {
+    [0] = "HealSmart",
+    [1] = "1. Healing Done",
+    [2] = "2. Heal vs Overheal",
+    [3] = "3. Mana Efficiency",
+    [4] = "4. Dispels Done",
+    [5] = "5. Buffs",
+    [6] = "6. Deaths",
+    [7] = "7. Resurrects Cast"
+}
 
 HealSmart_SpellCostDB = {
     -- --- PRIEST ---

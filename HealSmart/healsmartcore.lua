@@ -5,13 +5,12 @@
 -- Configuration Constants
 HEALSMART_MAX_SAVED_SESSIONS = 20
 
--- NEW GLOBAL CHECKPOINT: Declared globally at birth so healsmartsession.lua can write to it
 HealSmart_SelectedViewSessionID = 0 
+HealSmart_CurrentActivePage = 0 
 
 -- Runtime cache objects
 local groupRosterCache = {}
 local currentFilterMode = "ALL"
-local currentActivePage = 0 
 local _, playerClassFilename = UnitClass("player")
 
 local ALLOWED_CLASSES = {
@@ -35,27 +34,50 @@ function HealSmart_GetOrCreateProfile(dataTable, guid, name, classToken)
     if not dataTable then return nil end
     if not dataTable[guid] then
         local unitToken = "player"
+        local finalClass = classToken
+        
         if guid ~= UnitGUID("player") then
             if IsInRaid() then
                 for i = 1, GetNumGroupMembers() do
-                    if UnitGUID("raid"..i) == guid then unitToken = "raid"..i break end
+                    if UnitGUID("raid"..i) == guid then 
+                        unitToken = "raid"..i 
+                        -- SECURE BACKUP: If token is missing, query the engine live
+                        if not finalClass then _, finalClass = UnitClass(unitToken) end
+                        break 
+                    end
                 end
             else
                 for i = 1, GetNumGroupMembers() - 1 do
-                    if UnitGUID("party"..i) == guid then unitToken = "party"..i break end
+                    if UnitGUID("party"..i) == guid then 
+                        unitToken = "party"..i 
+                        if not finalClass then _, finalClass = UnitClass(unitToken) end
+                        break 
+                    end
                 end
             end
+        else
+            -- If it's the player, ensure we grab the correct class filename
+            if not finalClass then _, finalClass = UnitClass("player") end
+        end
+
+        -- SECURE FALLBACK: Default to "UNKNOWN" instead of "SHAMAN" to prevent data pollution
+        if not finalClass or finalClass == "" then
+            finalClass = "UNKNOWN"
         end
 
         dataTable[guid] = {
             name = name,
-            class = classToken or "SHAMAN",
+            class = finalClass,
             effective = 0,
             overheal = 0,
             percent = 0,
             unitId = unitToken,
             manaUsed = 0,
-            hpm = 0
+            hpm = 0,
+            deaths = 0,
+            resurrects = 0,
+            dispels = 0,
+            buffs = 0
         }
     end
     return dataTable[guid]
@@ -94,13 +116,16 @@ local function UpdateGroupRosterCache()
     end
 end
 
--- --- PART 2: Core Data Processing ---
+-- ==========================================
+-- HealSmart - Core Engine (v0.7.0) - PART 2 (7-Page Specific Sorting)
+-- ==========================================
+
 local sortedHealers = {}
 
 coreFrame.RefreshStats = function()
-    if currentActivePage == 0 then
-        local welcomeMessage = "Welcome to HealSmart!\n\nUse the < and > arrows to switch pages.\n\nFights are saved automatically up to 20 sessions."
-        if HealSmart_RenderTextMessage then HealSmart_RenderTextMessage("HealSmart v0.6.0", welcomeMessage) end
+    if HealSmart_CurrentActivePage == 0 and HealSmart_SelectedViewSessionID == 0 then
+        local welcomeMessage = "Welcome to HealSmart v0.7.0!\n\nUse the < and > arrows to switch pages.\n\nClick the Gold Reset Arrow to wipe raid night tracking data."
+        if HealSmart_RenderTextMessage then HealSmart_RenderTextMessage("HealSmart v0.7.0", welcomeMessage) end
         return
     end
 
@@ -108,6 +133,9 @@ coreFrame.RefreshStats = function()
     local topHealerAmount = 0
     local totalRaidEffective = 0 
     local topHPMValue = 0 
+    local topDispelValue = 0
+    local topDeathValue = 0
+    local topRessValue = 0
 
     local activeThreshold = HEALSMART_MANA_THRESHOLD or 300
     if not IsInGroup() then activeThreshold = 0 end
@@ -115,7 +143,6 @@ coreFrame.RefreshStats = function()
     local dataSourceTable = nil
     local sessionLabel = "Current Fight"
 
-    -- FIXED LOGIC: Query the global HealSmart_SelectedViewSessionID token securely
     if HealSmart_SelectedViewSessionID == -1 then
         dataSourceTable = HealSmartSettings and HealSmartSettings.overallData
         sessionLabel = "Overall Total"
@@ -144,6 +171,10 @@ coreFrame.RefreshStats = function()
                 local total = data.effective + data.overheal
                 data.percent = (total > 0) and ((data.effective / total) * 100) or 0
                 data.manaUsed = data.manaUsed or 0
+                data.deaths = data.deaths or 0
+                data.resurrects = data.resurrects or 0
+                data.dispels = data.dispels or 0
+                data.buffs = data.buffs or 0
 
                 if data.manaUsed > 0 then
                     data.hpm = data.effective / data.manaUsed
@@ -157,42 +188,62 @@ coreFrame.RefreshStats = function()
                 table.insert(sortedHealers, data)
                 totalRaidEffective = totalRaidEffective + data.effective
                 if data.effective > topHealerAmount then topHealerAmount = data.effective end
+                if data.dispels > topDispelValue then topDispelValue = data.dispels end
+                if data.deaths > topDeathValue then topDeathValue = data.deaths end
+                if data.resurrects > topRessValue then topRessValue = data.resurrects end
             end
         end
     end
 
+    -- Render blank state if no dataset rows found
     if #sortedHealers == 0 then
-        local pageTitle = "HealSmart"
-        if currentActivePage == 1 then pageTitle = "1. Healing Done"
-        elseif currentActivePage == 2 then pageTitle = "2. Heal vs Overheal"
-        elseif currentActivePage == 3 then pageTitle = "3. Mana Efficiency" end
-        pageTitle = pageTitle .. " (" .. sessionLabel .. ")"
+        local baseTitle = HealSmart_PageTitles[HealSmart_CurrentActivePage] or "HealSmart"
+        local pageTitle = baseTitle .. " (" .. sessionLabel .. ")"
         if HealSmart_RenderTextMessage then HealSmart_RenderTextMessage(pageTitle, "") end
         return
     end
 
-    local viewTitle = ""
-    if currentActivePage == 1 then viewTitle = "1. Healing Done ("..sessionLabel..")"
-    elseif currentActivePage == 2 then viewTitle = "2. Heal vs Overheal ("..sessionLabel..")"
-    elseif currentActivePage == 3 then viewTitle = "3. Mana Efficiency ("..sessionLabel..")" end
+    -- Compile dynamic strings headings using the unified global dictionary array
+    local baseTitle = HealSmart_PageTitles[HealSmart_CurrentActivePage] or "HealSmart"
+    local viewTitle = baseTitle .. " (" .. sessionLabel .. ")"
 
-    if currentActivePage == 1 then
+    -- CORRECTLY ORDERED SORTING CIRCUITS FOR v0.7.0 (4: Dispels, 5: Buffs, 6: Deaths, 7: Resser)
+    if HealSmart_CurrentActivePage == 1 then
         table.sort(sortedHealers, function(a, b) return (a.effective == b.effective) and (a.name < b.name) or (a.effective > b.effective) end)
         if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topHealerAmount, "HEAL", totalRaidEffective, viewTitle) end
-    elseif currentActivePage == 2 then
+    elseif HealSmart_CurrentActivePage == 2 then
         table.sort(sortedHealers, function(a, b) return (a.percent == b.percent) and (a.name < b.name) or (a.percent > b.percent) end)
         if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, 0, "EFFICIENCY", 0, viewTitle) end
-    elseif currentActivePage == 3 then
+    elseif HealSmart_CurrentActivePage == 3 then
         table.sort(sortedHealers, function(a, b) return (a.hpm == b.hpm) and (a.name < b.name) or (a.hpm > b.hpm) end)
         if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topHPMValue, "MANA", 0, viewTitle) end
+    elseif HealSmart_CurrentActivePage == 4 then
+        -- Page 4: Dispels Done
+        table.sort(sortedHealers, function(a, b) return (a.dispels == b.dispels) and (a.name < b.name) or (a.dispels > b.dispels) end)
+        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topDispelValue, "DISPELS", 0, viewTitle) end
+    elseif HealSmart_CurrentActivePage == 5 then
+        -- Page 5: Buffs Cast
+        table.sort(sortedHealers, function(a, b) return (a.buffs == b.buffs) and (a.name < b.name) or (a.buffs > b.buffs) end)
+        local topBuffValue = 0
+        for _, data in ipairs(sortedHealers) do if data.buffs > topBuffValue then topBuffValue = data.buffs end end
+        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topBuffValue, "BUFFS", 0, viewTitle) end
+    elseif HealSmart_CurrentActivePage == 6 then
+        -- Page 6: Raid Deaths
+        table.sort(sortedHealers, function(a, b) return (a.deaths == b.deaths) and (a.name < b.name) or (a.deaths > b.deaths) end)
+        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topDeathValue, "DEATHS", 0, viewTitle) end
+    elseif HealSmart_CurrentActivePage == 7 then
+        -- Page 7: Resurrects Cast
+        table.sort(sortedHealers, function(a, b) return (a.resurrects == b.resurrects) and (a.name < b.name) or (a.resurrects > b.resurrects) end)
+        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topRessValue, "RESS", 0, viewTitle) end
     end
 end
 
+-- BOUNDARY MATRIX: Maintained at 7 pages maximum capacity
 function HealSmart_ChangePage(direction)
-    currentActivePage = currentActivePage + direction
-    if currentActivePage > 3 then currentActivePage = 0 end
-    if currentActivePage < 0 then currentActivePage = 3 end
-    if HealSmartSettings then HealSmartSettings.page = currentActivePage end
+    HealSmart_CurrentActivePage = HealSmart_CurrentActivePage + direction
+    if HealSmart_CurrentActivePage > 7 then HealSmart_CurrentActivePage = 0 end
+    if HealSmart_CurrentActivePage < 0 then HealSmart_CurrentActivePage = 7 end
+    if HealSmartSettings then HealSmartSettings.page = HealSmart_CurrentActivePage end
     HealSmart_RefreshCurrentPage()
 end
 
@@ -203,12 +254,28 @@ function HealSmart_ToggleClassFilter()
 end
 
 -- ==========================================
--- HealSmart - Core Engine (v0.6.0) - PART 3A
+-- HealSmart - Core Engine (v0.7.0) - PART 3A (Combat Log Parser - Part 1)
 -- ==========================================
 
 local isSessionActive = false      
 local inTrueCombat = false         
 local timeSinceCombatEnd = 0
+
+-- Dynamic Cache tracking for major long-term raid buffs to filter out combat procs securely
+local BUFF_WATCH_LIST = {
+    ["Power Word: Fortitude"] = true, ["Prayer of Fortitude"] = true,
+    ["Shadow Protection"] = true, ["Prayer of Shadow Protection"] = true,
+    ["Divine Spirit"] = true, ["Prayer of Spirit"] = true,
+    ["Arcane Intellect"] = true, ["Arcane Brilliance"] = true,
+    ["Mark of the Wild"] = true, ["Gift of the Wild"] = true,
+    ["Thorns"] = true,
+    ["Blessing of Might"] = true, ["Greater Blessing of Might"] = true,
+    ["Blessing of Wisdom"] = true, ["Greater Blessing of Wisdom"] = true,
+    ["Blessing of Kings"] = true, ["Greater Blessing of Kings"] = true,
+    ["Blessing of Light"] = true, ["Greater Blessing of Light"] = true,
+    ["Blessing of Sanctuary"] = true, ["Greater Blessing of Sanctuary"] = true,
+    ["Blessing of Salvation"] = true, ["Greater Blessing of Salvation"] = true
+}
 
 local function GetLiveSpellManaCost(spellID)
     if not spellID then return 0 end
@@ -222,16 +289,14 @@ local function GetLiveSpellManaCost(spellID)
 end
 
 local function OnCombatLogEvent()
-    if not isSessionActive then return end
-
-    local timestamp, eventType, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags = CombatLogGetCurrentEventInfo()
-
     -- Fetch the active writing sub-table for the current active fight session
     local activeHealers = HealSmart_GetActiveSessionHealers()
     if not activeHealers then return end
 
-    -- --- HYBRID MANA WATCH ENGINE ---
-    if eventType == "SPELL_CAST_SUCCESS" then
+    local timestamp, eventType, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags = CombatLogGetCurrentEventInfo()
+
+    -- --- 1. HYBRID MANA WATCH ENGINE (Requires session tracking check) ---
+    if eventType == "SPELL_CAST_SUCCESS" and isSessionActive then
         local spellID, spellName, _ = select(12, CombatLogGetCurrentEventInfo())
         
         local isGroupMember = (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
@@ -246,8 +311,6 @@ local function OnCombatLogEvent()
             
             if classFilename and ALLOWED_CLASSES[classFilename] then
                 local cleanName = string.match(sourceName, "([^-]+)")
-                
-                -- Log directly to current combat session
                 local healer = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanName, classFilename)
                 local cost = spellID and GetLiveSpellManaCost(spellID) or 0
                 if cost == 0 and dbData then cost = dbData.cost or 0 end
@@ -267,18 +330,16 @@ local function OnCombatLogEvent()
                 
                 healer.manaUsed = healer.manaUsed + cost
                 
-                -- Log simultaneously to the un-resetted Overall Total table
                 if HealSmartSettings and HealSmartSettings.overallData then
                     local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanName, classFilename)
                     overallHealer.manaUsed = overallHealer.manaUsed + cost
                 end
-                
                 coreFrame.RefreshStats()
             end
         end
 
-    -- --- A: DIRECT HEALS & HOTS ---
-    elseif eventType == "SPELL_HEAL" or eventType == "SPELL_PERIODIC_HEAL" then
+    -- --- 2. DIRECT HEALS & HOTS (Requires session tracking check) ---
+    elseif (eventType == "SPELL_HEAL" or eventType == "SPELL_PERIODIC_HEAL") and isSessionActive then
         local _, spellName, _, amount, overheal = select(12, CombatLogGetCurrentEventInfo())
         
         overheal = overheal or 0
@@ -295,18 +356,15 @@ local function OnCombatLogEvent()
             local classFilename = groupRosterCache[cleanName] or SPELL_CLASS_CACHE[spellName]
 
             if classFilename and ALLOWED_CLASSES[classFilename] then
-                -- Log to current session
                 local healer = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanName, classFilename)
                 healer.effective = healer.effective + effective
                 healer.overheal = healer.overheal + overheal
                 
-                -- Log to overall total accumulation variables
                 if HealSmartSettings and HealSmartSettings.overallData then
                     local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanName, classFilename)
                     overallHealer.effective = overallHealer.effective + effective
                     overallHealer.overheal = overallHealer.overheal + overheal
                 end
-                
                 coreFrame.RefreshStats()
             end
         end
@@ -343,6 +401,104 @@ local function OnCombatLogEvent()
                     overallHealer.effective = overallHealer.effective + shieldAbsorbAmount
                 end
                 
+                coreFrame.RefreshStats()
+            end
+        end
+
+    -- ==========================================
+    -- HealSmart - Core Engine (v0.7.0) - PART 3A (Combat Log Parser - Part 2)
+    -- ==========================================
+
+    -- --- 4. RAID DEATH WATCH ENGINE (Runs out-of-combat!) ---
+    elseif eventType == "UNIT_DIED" then
+        local isTargetGroupMember = (bit.band(destFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
+                                    (bit.band(destFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
+                                    (bit.band(destFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
+
+        -- Ensure we only track player deaths inside our own raid group, excluding pets and monsters
+        if isTargetGroupMember and destName and not string.find(destGUID, "^Pet-") then
+            local cleanDestName = string.match(destName, "([^-]+)")
+            local healerClass = groupRosterCache[cleanDestName]
+            
+            if healerClass and ALLOWED_CLASSES[healerClass] then
+                -- Add points to the person who died inside the current session array
+                local healer = HealSmart_GetOrCreateProfile(activeHealers, destGUID, cleanDestName, healerClass)
+                healer.deaths = healer.deaths + 1
+                
+                -- Accumulate cumulatively inside the master Overall database sheet
+                if HealSmartSettings and HealSmartSettings.overallData then
+                    local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, destGUID, cleanDestName, healerClass)
+                    overallHealer.deaths = overallHealer.deaths + 1
+                end
+                coreFrame.RefreshStats()
+            end
+        end
+
+    -- --- 5. DISPEL TRACKING ENGINE (Runs out-of-combat!) ---
+    elseif eventType == "SPELL_DISPEL" then
+        local isCasterGroupMember = (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
+                                    (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
+                                    (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
+
+        if isCasterGroupMember and sourceName then
+            local cleanSourceName = string.match(sourceName, "([^-]+)")
+            local healerClass = groupRosterCache[cleanSourceName] or "UNKNOWN"
+            
+            if healerClass and ALLOWED_CLASSES[healerClass] then
+                local healer = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, healerClass)
+                healer.dispels = healer.dispels + 1
+                
+                if HealSmartSettings and HealSmartSettings.overallData then
+                    local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanSourceName, healerClass)
+                    overallHealer.dispels = overallHealer.dispels + 1
+                end
+                coreFrame.RefreshStats()
+            end
+        end
+
+    -- --- 6. RESURRECTION TRACKING ENGINE (Runs out-of-combat!) ---
+    elseif eventType == "SPELL_RESURRECT" then
+        local isCasterGroupMember = (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
+                                    (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
+                                    (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
+
+        if isCasterGroupMember and sourceName then
+            local cleanSourceName = string.match(sourceName, "([^-]+)")
+            local healerClass = groupRosterCache[cleanSourceName] or "UNKNOWN"
+            
+            if healerClass and ALLOWED_CLASSES[healerClass] then
+                local healer = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, healerClass)
+                healer.resurrects = healer.resurrects + 1
+                
+                if HealSmartSettings and HealSmartSettings.overallData then
+                    local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanSourceName, healerClass)
+                    overallHealer.resurrects = overallHealer.resurrects + 1
+                end
+                coreFrame.RefreshStats()
+            end
+        end
+
+    -- --- 7. RAID BUFF TRACKING ENGINE (Runs out-of-combat!) ---
+    elseif eventType == "SPELL_AURA_APPLIED" then
+        local _, spellName, _ = select(12, CombatLogGetCurrentEventInfo())
+        
+        local isCasterGroupMember = (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
+                                    (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
+                                    (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
+
+        -- Secure barrier filtration: Validate against our hard-coded watch list to ignore short combat procs
+        if isCasterGroupMember and sourceName and spellName and BUFF_WATCH_LIST[spellName] then
+            local cleanSourceName = string.match(sourceName, "([^-]+)")
+            local healerClass = groupRosterCache[cleanSourceName] or "UNKNOWN"
+            
+            if healerClass and ALLOWED_CLASSES[healerClass] then
+                local healer = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, healerClass)
+                healer.buffs = healer.buffs + 1
+                
+                if HealSmartSettings and HealSmartSettings.overallData then
+                    local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanSourceName, healerClass)
+                    overallHealer.buffs = overallHealer.buffs + 1
+                end
                 coreFrame.RefreshStats()
             end
         end
@@ -424,7 +580,7 @@ end)
 
 -- Global initialization interface running across layout load hooks
 function HealSmart_SetInitialPage(savedPage)
-    currentActivePage = savedPage
+    HealSmart_CurrentActivePage = savedPage
     
     -- Structure validation: Ensure multi-session databases exist upon login
     if HealSmartSettings then
