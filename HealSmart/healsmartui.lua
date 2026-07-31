@@ -163,10 +163,34 @@ prevButton:SetScript("OnEnter", function(self)
 end)
 prevButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
--- Graphical History/Session Button (10x10)
+-- NEW: Graphical Master Reset Button (Sized to 14x14 to perfectly match next/prev arrows)
+resetButton = CreateFrame("Button", nil, header)
+resetButton:SetSize(14, 14)
+resetButton:SetPoint("RIGHT", prevButton, "LEFT", -2, 0) -- Perfect flush alignment
+resetButton:SetNormalTexture("Interface\\Buttons\\UI-RotationLeft-Button-Up")
+
+if resetButton:GetNormalTexture() then
+    resetButton:GetNormalTexture():SetAllPoints(resetButton)
+    resetButton:GetNormalTexture():SetVertexColor(1.0, 0.82, 0.0, 1.0) -- Gold styling
+end
+
+resetButton:SetScript("OnClick", function()
+    -- Global trigger invoking Blizzard's official dialog confirmation framework safely
+    if HealSmart_TriggerResetDialog then
+        HealSmart_TriggerResetDialog()
+    end
+end)
+resetButton:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
+    GameTooltip:SetText("Reset All Data & Clear History", 1, 1, 1, 1, true)
+    GameTooltip:Show()
+end)
+resetButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+-- Graphical History/Session Button (10x10 - FIXED ANCHOR: Tied to the left of the new resetButton)
 sessionButton = CreateFrame("Button", nil, header)
 sessionButton:SetSize(10, 10)
-sessionButton:SetPoint("RIGHT", prevButton, "LEFT", -2, 0)
+sessionButton:SetPoint("RIGHT", resetButton, "LEFT", -4, 0)
 sessionButton:SetNormalTexture("Interface\\Icons\\INV_Misc_Note_02")
 if sessionButton:GetNormalTexture() then sessionButton:GetNormalTexture():SetAllPoints(sessionButton) end
 sessionButton:SetScript("OnClick", function()
@@ -179,7 +203,7 @@ sessionButton:SetScript("OnEnter", function(self)
 end)
 sessionButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
--- Lock Toggle Button (12x12)
+-- Lock Toggle Button (12x12 - FIXED ANCHOR: Tied to the left of sessionButton)
 lockButton = CreateFrame("Button", nil, header)
 lockButton:SetSize(12, 12)
 lockButton:SetPoint("RIGHT", sessionButton, "LEFT", -4, 0)
@@ -465,6 +489,28 @@ function HealSmart_HideMainWindow()
             HealSmart_Print("Window is hidden. You can show it again by typing /hs.")
         end
     end
+end
+
+-- NEW: Official Blizzard Static Popup Confirmation Specification Sheet
+StaticPopupDialogs["HEALSMART_WIPE_CONFIRM"] = {
+    text = "Are you sure you want to wipe all data and clear your entire fight history?",
+    button1 = "Yes, Clear Everything",
+    button2 = "No, Cancel",
+    OnAccept = function()
+        -- Route directly to the backend clearing engine in the core file
+        if HealSmart_ExecuteMasterWipeData then
+            HealSmart_ExecuteMasterWipeData()
+        end
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    preferredIndex = 3,
+}
+
+-- Global bridge allowing the header button object to spawn the prompt panel instantly
+function HealSmart_TriggerResetDialog()
+    StaticPopup_Show("HEALSMART_WIPE_CONFIRM")
 end
 
 local loaderFrame = CreateFrame("Frame")

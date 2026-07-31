@@ -462,7 +462,113 @@ function HealSmart_RefreshCurrentPage()
     if coreFrame.RefreshStats then coreFrame.RefreshStats() end
 end
 
+
+-- ==========================================
+-- HealSmart - Core Engine (v0.7.0) - PART 4A (Reset & Group Popups)
+-- ==========================================
+
+-- NEW MASTER WIPE ENGINE: Complete hard-reset of all cached data arrays and night totals
+function HealSmart_ExecuteMasterWipeData()
+    if not HealSmartSettings then return end
+    
+    -- 1. Purge all structural data pipelines permanently
+    HealSmartSettings.sessions = {}
+    HealSmartSettings.overallData = {}
+    HealSmartSettings.activeSessionID = 1
+    HealSmartSettings.activeSessionIndex = 1
+    
+    -- 2. Build a fresh baseline starter fight block to prevent empty array nil crashes
+    local zoneName = GetZoneText() or "Azeroth"
+    HealSmartSettings.sessions[1] = {
+        id = 1,
+        name = "Startup Session (" .. zoneName .. ")",
+        healers = {}
+    }
+    
+    -- 3. Reset the global display viewport back to show the fresh current fight slot
+    HealSmart_SelectedViewSessionID = 0
+    
+    -- 4. Flush the main window canvas completely and redraw the empty state
+    if HealSmart_ClearDisplay then HealSmart_ClearDisplay() end
+    if coreFrame and coreFrame.RefreshStats then coreFrame.RefreshStats() end
+    
+    -- 5. Force update the historic session dropdown window cache if it happens to be open
+    if HealSmart_UpdateSessionListWindow then HealSmart_UpdateSessionListWindow() end
+    
+    if HealSmart_Print then
+        HealSmart_Print("All combat session logs and Overall Raid Totals have been successfully wiped.")
+    end
+end
+
+-- NEW: Official Blizzard Static Popup Specification for automated Group Join promptings
+StaticPopupDialogs["HEALSMART_GROUP_JOIN_PROMPT"] = {
+    text = "You have joined a new Group or Raid. Do you want to wipe your previous fight history?",
+    button1 = "Yes, Start Fresh",
+    button2 = "No, Keep Data",
+    OnAccept = function()
+        HealSmart_ExecuteMasterWipeData()
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    preferredIndex = 3,
+}
+
 -- global callback bridge enabling the UI loader ticker to query background states
 HealSmart_SetInitialPage(HealSmartSettings and HealSmartSettings.page or 0)
+
+-- ==========================================
+-- HealSmart - Core Engine (v0.7.0) - PART 3B (Group-Join Listener)
+-- ==========================================
+
+-- Runtime guard flag to track your previous grouping state across checks securely
+local wasInGroupLastCheck = false
+
+coreFrame:SetScript("OnEvent", function(self, event, ...)
+    if event == "COMBAT_LOG_EVENT_UNFILTERED" then
+        OnCombatLogEvent()
+    elseif event == "PLAYER_REGEN_DISABLED" then
+        inTrueCombat = true
+        timeSinceCombatEnd = 0
+        if not isSessionActive then
+            HealSmart_CreateNewSession()
+            isSessionActive = true
+            coreFrame.RefreshStats()
+        end
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        inTrueCombat = false
+        timeSinceCombatEnd = 0
+    elseif event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
+        UpdateGroupRosterCache()
+        
+        -- NEW AUTOMATED GROUP JOIN ENGINE
+        local currentlyInGroup = IsInGroup() or IsInRaid()
+        
+        -- Trigger point: Fires ONLY when transitioning from solo player to group member
+        if currentlyInGroup and not wasInGroupLastCheck then
+            if HealSmartSettings and HealSmartSettings.groupJoinBehavior then
+                local behavior = HealSmartSettings.groupJoinBehavior
+                
+                if behavior == 1 then
+                    -- Option 1: Hard wipe instantly without prompting
+                    HealSmart_ExecuteMasterWipeData()
+                    if HealSmart_Print then HealSmart_Print("Automatically cleared history due to group join settings.") end
+                elseif behavior == 2 then
+                    -- Option 2: Keep data silently and do absolutely nothing
+                elseif behavior == 3 then
+                    -- Option 3: Fire Blizzards popup confirmation window framework
+                    StaticPopup_Show("HEALSMART_GROUP_JOIN_PROMPT")
+                end
+            end
+        end
+        
+        -- Update the state tracking flag for the next event loop check
+        wasInGroupLastCheck = currentlyInGroup
+    end
+end)
+
+UpdateGroupRosterCache()
+
+-- Remember to close the file with your signature block!
 
 -- end healsmartcore.lua
