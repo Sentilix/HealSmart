@@ -4,3 +4,5 @@ HeroStats/.vs/
 HeroStats/HeroStats.wowsln
 
 *.wowsln
+
+*.user
