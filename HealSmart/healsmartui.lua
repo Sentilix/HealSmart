@@ -591,13 +591,46 @@ function HealSmart_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
                     end
                 end
                 
-            -- ROW 3: MANA EFFICIENCY SPECIFIC TOOLTIP
+            -- ROW 3: MANA EFFICIENCY SPECIFIC TOOLTIP (v0.8.0 Factual Raw Mana Model - NO GUESSWORK)
             elseif HealSmart_CurrentActivePage == 3 then
-                GameTooltip:AddLine("Mana Efficiency Details:", 1, 1, 1)
-                local formattedMana = FormatDotNumber and FormatDotNumber(data.manaUsed) or data.manaUsed
-                GameTooltip:AddDoubleLine("Total Mana Spent:", formattedMana .. " mana", 0.8, 0.8, 0.8, 1, 1, 1)
-                GameTooltip:AddDoubleLine("Calculated Yield:", string.format("%.1f HPM", data.hpm), 0.8, 0.8, 0.8, 1, 0.82, 0)
+                GameTooltip:AddLine("Ability Yield Breakdown:", 1, 1, 1)
                 
+                -- Loop strictly through your persistent spellMana database populated by SPELL_CAST_SUCCESS
+                if data.spellMana and next(data.spellMana) ~= nil then
+                    local sortedManaSpells = {}
+                    for spellName, manaData in pairs(data.spellMana) do
+                        -- Fetch the factual raw mana spent AND the factual raw healing accumulated inside core
+                        local rawSpent = manaData.manaUsed or 0
+                        local rawHealAmt = manaData.effective or 0
+                        
+                        table.insert(sortedManaSpells, { name = spellName, spent = rawSpent, eff = rawHealAmt })
+                    end
+                    -- Sort from the highest mana consuming rank to the lowest
+                    table.sort(sortedManaSpells, function(a, b) return a.spent > b.spent end)
+                    
+                    for i = 1, math.min(8, #sortedManaSpells) do
+                        local m = sortedManaSpells[i]
+                        
+                        -- Calculate the absolute true, independent HPM based on raw database parameters
+                        local spellHpm = (m.spent > 0) and (m.eff / m.spent) or 0
+                        local formattedMana = FormatDotNumber and FormatDotNumber(m.spent) or m.spent
+                        
+                        -- Displays independent data: e.g. Rank 5 on 1.9 HPM and Rank 10 on 4.5 HPM
+                        GameTooltip:AddDoubleLine(
+                            i .. ". " .. m.name, 
+                            string.format("%s mana - %.1f HPM", formattedMana, spellHpm), 
+                            0.8, 0.8, 0.8, 1, 0.82, 0
+                        )
+                    end
+                    
+                    -- Summary line at the bottom matches your main bar 1:1 without deviations
+                    GameTooltip:AddLine(" ")
+                    local formattedTotalMana = FormatDotNumber and FormatDotNumber(data.manaUsed) or data.manaUsed
+                    GameTooltip:AddDoubleLine("Total Combined Yield:", string.format("%s mana (%.1f HPM)", formattedTotalMana, data.hpm), 1, 1, 1, 1, 0.82, 0)
+                else
+                    GameTooltip:AddLine("No detailed mana logs available for this session.", 0.6, 0.6, 0.6, true)
+                end
+
             -- ROW 5: BUFFS APPLIED SPECIFIC TOOLTIP (v0.8.0 Nil-Safeguarded)
             elseif HealSmart_CurrentActivePage == 5 then
                 GameTooltip:AddLine("Top Buffs Applied:", 1, 1, 1)

@@ -88,7 +88,8 @@ function HealSmart_GetOrCreateProfile(dataTable, guid, name, classToken)
             spellHeals = {},
             spellDamage = {},
             spellTaken = {},
-            spellBuffs = {}
+            spellBuffs = {},
+            spellMana = {}
         }
 
     end
@@ -433,6 +434,13 @@ local function OnCombatLogEvent()
                     end
                     healer.spellHeals[fullSpellName].effective = healer.spellHeals[fullSpellName].effective + effective
                     healer.spellHeals[fullSpellName].overheal = healer.spellHeals[fullSpellName].overheal + overheal
+                    
+                    -- NEW v0.8.0: Purely accumulate the effective healing yield safely
+                    if not healer.spellMana then healer.spellMana = {} end
+                    if not healer.spellMana[fullSpellName] then
+                        healer.spellMana[fullSpellName] = { manaUsed = 0, effective = 0 }
+                    end
+                    healer.spellMana[fullSpellName].effective = healer.spellMana[fullSpellName].effective + effective
                 end
 
                 if HealSmartSettings and HealSmartSettings.overallData then
@@ -447,6 +455,13 @@ local function OnCombatLogEvent()
                         end
                         overallHealer.spellHeals[fullSpellName].effective = overallHealer.spellHeals[fullSpellName].effective + effective
                         overallHealer.spellHeals[fullSpellName].overheal = overallHealer.spellHeals[fullSpellName].overheal + overheal
+                        
+                        -- Purely accumulate overall master effective yield safely
+                        if not overallHealer.spellMana then overallHealer.spellMana = {} end
+                        if not overallHealer.spellMana[fullSpellName] then
+                            overallHealer.spellMana[fullSpellName] = { manaUsed = 0, effective = 0 }
+                        end
+                        overallHealer.spellMana[fullSpellName].effective = overallHealer.spellMana[fullSpellName].effective + effective
                     end
                 end
                 coreFrame.RefreshStats()
@@ -759,6 +774,47 @@ local function OnCombatLogEvent()
                                     (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
                                     (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
 
+        -- NEW v0.8.0 MANA HOOK: Runs for all valid group casters instantly upon click
+        if isCasterGroupMember and sourceName and spellName then
+            local spellID = select(12, CombatLogGetCurrentEventInfo())
+            local fullSpellName = spellName
+            
+            -- Compile the precise Rank name context safely
+            if spellID and C_Spell and C_Spell.GetSpellSubtext then
+                local rankText = C_Spell.GetSpellSubtext(spellID)
+                if rankText and rankText ~= "" then
+                    fullSpellName = string.format("%s (%s)", spellName, rankText)
+                end
+            end
+
+            -- FIXED: Extract the first resource index layout from Blizzard's multi-table return safely
+            if spellID and C_Spell and C_Spell.GetSpellPowerCost then
+                local costTable = C_Spell.GetSpellPowerCost(spellID)
+                local costInfo = costTable and costTable[1] -- Fetch the primary resource array slot
+                local actualCost = costInfo and costInfo.cost or 0
+                
+                print("actualCost: "..(actualCost or "nil"));
+
+                if actualCost > 0 then
+                    local healer = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, healerClass)
+                    if not healer.spellMana then healer.spellMana = {} end
+                    if not healer.spellMana[fullSpellName] then
+                        healer.spellMana[fullSpellName] = { manaUsed = 0, effective = 0 }
+                    end
+                    healer.spellMana[fullSpellName].manaUsed = healer.spellMana[fullSpellName].manaUsed + actualCost
+
+                    if HealSmartSettings and HealSmartSettings.overallData then
+                        local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanSourceName, healerClass)
+                        if not overallHealer.spellMana then overallHealer.spellMana = {} end
+                        if not overallHealer.spellMana[fullSpellName] then
+                            overallHealer.spellMana[fullSpellName] = { manaUsed = 0, effective = 0 }
+                        end
+                        overallHealer.spellMana[fullSpellName].manaUsed = overallHealer.spellMana[fullSpellName].manaUsed + actualCost
+                    end
+                end
+            end
+        end
+
         if isCasterGroupMember and sourceName and spellName and BUFF_WATCH_LIST[spellName] then
             local healer = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, healerClass)
             healer.buffs = (healer.buffs or 0) + 1
@@ -775,7 +831,7 @@ local function OnCombatLogEvent()
             end
             coreFrame.RefreshStats()
         end
-	end;
+    end
 end
 
 -- ==========================================
