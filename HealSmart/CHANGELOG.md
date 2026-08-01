@@ -1,5 +1,17 @@
 # HealSmart Changelog
 
+# Changelog - HealSmart v0.8.0
+
+## [Added]
+- Added: Mana Gained page - tracking potions, infusions, runes, and Epiphany.
+
+## [Changed]
+- Changed: System refactored to a fully data-driven, 1-based text token layout.
+- Changed: Tooltip values and percentages refactored.
+
+## [Fixed]
+- Fixed: Responsive `OnLeave` script to close tooltips instantly.
+
 ## v0.7.0
 * **New Tracker Pages:** Added separate top lists for Dispels, Buffs, Deaths, and Resurrections.
 * **Chat Report Button:** Added an icon to blast top statistics directly into /Raid or /Party chat.

@@ -135,20 +135,41 @@ end
 
 local sortedHealers = {}
 
-coreFrame.RefreshStats = function()
-    if HealSmart_CurrentActivePage == 0 and HealSmart_SelectedViewSessionID == 0 then
-        local welcomeMessage = "Welcome to HealSmart v0.7.0!\n\nUse the < and > arrows to switch pages.\n\nClick the Gold Reset Arrow to wipe raid night tracking data."
-        if HealSmart_RenderTextMessage then HealSmart_RenderTextMessage("HealSmart v0.7.0", welcomeMessage) end
+function coreFrame.RefreshStats()
+    -- Unified v0.8.0 Data-Driven Token Matrix Routing
+    local pageRecord = HealSmart_GetPageRecord(HealSmart_CurrentActivePage)
+    local pageName = pageRecord.name
+    local viewTitle = pageRecord.title
+
+    -- FRONTPAGE HANDLING: Safely short-circuit if on the welcome screen
+    if pageName == "FRONTPAGE" then
+        if uiBars then
+            for _, bar in ipairs(uiBars) do
+                if bar and bar.Hide then bar:Hide() end
+            end
+        end
+
+        local welcomeMessage = "Welcome to HealSmart!\n\nUse the < and > arrows in the top right to switch statistics screens.\n\nData tracks automatically as soon as combat starts."
+        if HealSmart_RenderTextMessage then
+            HealSmart_RenderTextMessage(viewTitle or "HealSmart", welcomeMessage)
+        end
         return
     end
 
+    -- Clear previous fight cache cleanly
     table.wipe(sortedHealers)
+    
+    -- CONSOLIDATED MASTER TRACKERS: Your original trusted variables + new extensions (NO DUPLICATES!)
     local topHealerAmount = 0
     local totalRaidEffective = 0 
     local topHPMValue = 0 
     local topDispelValue = 0
     local topDeathValue = 0
     local topRessValue = 0
+    local topBuffsValue = 0
+    local topDamageDoneValue = 0
+    local topDamageTakenValue = 0
+    local topManaGainedValue = 0
 
     local activeThreshold = HEALSMART_MANA_THRESHOLD or 300
     if not IsInGroup() then activeThreshold = 0 end
@@ -179,11 +200,11 @@ coreFrame.RefreshStats = function()
 
     if dataSourceTable then
         for guid, data in pairs(dataSourceTable) do
-            -- FIXED FOR v0.8.0: Disable class locks on damage pages so all raiders flow through
-            local isDamagePage = (HealSmart_CurrentActivePage == 8 or HealSmart_CurrentActivePage == 9)
+            -- Dynamically disable class locks on damage pages using text tokens!
+            local isDamagePage = (pageName == "DAMAGE_DONE" or pageName == "DAMAGE_TAKEN")
             
             if currentFilterMode == "CLASS" and data.class ~= playerClassFilename and not isDamagePage then
-                -- Filtered
+                -- Filtered safely
             else
                 local total = data.effective + data.overheal
                 data.percent = (total > 0) and ((data.effective / total) * 100) or 0
@@ -194,7 +215,9 @@ coreFrame.RefreshStats = function()
                 data.buffs = data.buffs or 0
                 data.damageDone = data.damageDone or 0
                 data.damageTaken = data.damageTaken or 0
+                data.manaGained = data.manaGained or 0
 
+                -- Calculate and track factual HPM yields safely
                 if data.manaUsed > 0 then
                     data.hpm = data.effective / data.manaUsed
                     if data.manaUsed >= activeThreshold then
@@ -204,27 +227,30 @@ coreFrame.RefreshStats = function()
                     data.hpm = 0
                 end
 
-                -- NEW INTELLIGENT FILTRATION GATEWAY: Supports pages 8 and 9 cleanly
+                -- Accumulate maximum thresholds inside your dataset loops
+                if data.damageDone > topDamageDoneValue then topDamageDoneValue = data.damageDone end
+                if data.damageTaken > topDamageTakenValue then topDamageTakenValue = data.damageTaken end
+                if data.buffs > topBuffsValue then topBuffsValue = data.buffs end
+                if data.manaGained > topManaGainedValue then topManaGainedValue = data.manaGained end
+
+                -- Pure data-driven token filter mapping gates
                 local shouldInclude = false
-                
-                if HealSmart_CurrentActivePage == 1 or HealSmart_CurrentActivePage == 2 then
-                    if data.effective > 0 or data.overheal > 0 then shouldInclude = true end
-                elseif HealSmart_CurrentActivePage == 3 then
-                    if data.manaUsed > 0 or data.effective > 0 then shouldInclude = true end
-                elseif HealSmart_CurrentActivePage == 4 then
-                    if data.dispels > 0 then shouldInclude = true end
-                elseif HealSmart_CurrentActivePage == 5 then
-                    if data.buffs > 0 then shouldInclude = true end
-                elseif HealSmart_CurrentActivePage == 6 then
-                    if data.deaths > 0 then shouldInclude = true end
-                elseif HealSmart_CurrentActivePage == 7 then
-                    if data.resurrects > 0 then shouldInclude = true end
-                elseif HealSmart_CurrentActivePage == 8 then
-                    -- Page 8: Damage Done
-                    if data.damageDone > 0 then shouldInclude = true end
-                elseif HealSmart_CurrentActivePage == 9 then
-                    -- Page 9: Damage Taken
-                    if data.damageTaken > 0 then shouldInclude = true end
+                if pageName == "HEALING" or pageName == "OVERHEALING" or pageName == "MANA_EFF" then
+                    if (data.effective or 0) > 0 or (data.overheal or 0) > 0 then shouldInclude = true end
+                elseif pageName == "DISPELS" then
+                    if (data.dispels or 0) > 0 then shouldInclude = true end
+                elseif pageName == "BUFFS" then
+                    if (data.buffs or 0) > 0 then shouldInclude = true end
+                elseif pageName == "DEATHS" then
+                    if (data.deaths or 0) > 0 then shouldInclude = true end
+                elseif pageName == "RESURRECTS" then
+                    if (data.resurrects or 0) > 0 then shouldInclude = true end
+                elseif pageName == "DAMAGE_DONE" then
+                    if (data.damageDone or 0) > 0 then shouldInclude = true end
+                elseif pageName == "DAMAGE_TAKEN" then
+                    if (data.damageTaken or 0) > 0 then shouldInclude = true end
+                elseif pageName == "MANA_GAINED" then
+                    if (data.manaGained or 0) > 0 then shouldInclude = true end
                 end
 
                 if shouldInclude then
@@ -239,65 +265,67 @@ coreFrame.RefreshStats = function()
         end
     end
 
-    -- Render blank state if no dataset rows found
+    -- Render blank state if no dataset rows found (v0.8.0 Data-Driven Secured)
     if #sortedHealers == 0 then
-        local baseTitle = HealSmart_PageTitles[HealSmart_CurrentActivePage] or "HealSmart"
+        local baseTitle = viewTitle or "HealSmart"
         local pageTitle = baseTitle .. " (" .. sessionLabel .. ")"
         if HealSmart_RenderTextMessage then HealSmart_RenderTextMessage(pageTitle, "") end
         return
     end
 
-    -- Compile dynamic strings headings using the unified global dictionary array
-    local baseTitle = HealSmart_PageTitles[HealSmart_CurrentActivePage] or "HealSmart"
-    local viewTitle = baseTitle .. " (" .. sessionLabel .. ")"
-    viewTitle = baseTitle .. " (" .. sessionLabel .. ")"
+    -- FIXED v0.8.0: Data-driven sorting and rendering pipeline (Consolidated & Token Synchronized)
+    if pageName == "DAMAGE_DONE" then
+        table.sort(sortedHealers, function(a, b) return (a.damageDone == b.damageDone) and (a.name < b.name) or (a.damageDone > b.damageDone) end)
+        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topDamageDoneValue, "DAMAGE_DONE", 0, viewTitle) end
+        
+    elseif pageName == "DAMAGE_TAKEN" then
+        table.sort(sortedHealers, function(a, b) return (a.damageTaken == b.damageTaken) and (a.name < b.name) or (a.damageTaken > b.damageTaken) end)
+        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topDamageTakenValue, "DAMAGE_TAKEN", 0, viewTitle) end
 
-    -- Sort and route datasets targeting the UI bar factory loop
-    if HealSmart_CurrentActivePage == 1 then
+    elseif pageName == "HEALING" then
         table.sort(sortedHealers, function(a, b) return (a.effective == b.effective) and (a.name < b.name) or (a.effective > b.effective) end)
-        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topHealerAmount, "HEAL", totalRaidEffective, viewTitle) end
-    elseif HealSmart_CurrentActivePage == 2 then
-        table.sort(sortedHealers, function(a, b) return (a.percent == b.percent) and (a.name < b.name) or (a.percent > b.percent) end)
-        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, 0, "EFFICIENCY", 0, viewTitle) end
-    elseif HealSmart_CurrentActivePage  == 3 then
+        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topHealerAmount, "HEALING", totalRaidEffective, viewTitle) end
+        
+    elseif pageName == "OVERHEALING" then
+        table.sort(sortedHealers, function(a, b) return (a.overheal == b.overheal) and (a.name < b.name) or (a.overheal > b.overheal) end)
+        -- Overheal tracks maximum thresholds directly based on your data-percent or maxVal layers
+        local topOverhealAmt = 0
+        for _, data in ipairs(sortedHealers) do if (data.overheal or 0) > topOverhealAmt then topOverhealAmt = data.overheal end end
+        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topOverhealAmt, "OVERHEALING", 0, viewTitle) end
+        
+    elseif pageName == "MANA_EFF" then
         table.sort(sortedHealers, function(a, b) return (a.hpm == b.hpm) and (a.name < b.name) or (a.hpm > b.hpm) end)
-        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topHPMValue, "MANA", 0, viewTitle) end
-    elseif HealSmart_CurrentActivePage == 4 then
+        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topHPMValue, "MANA_EFF", 0, viewTitle) end
+        
+    elseif pageName == "MANA_GAINED" then
+        table.sort(sortedHealers, function(a, b) return (a.manaGained == b.manaGained) and (a.name < b.name) or (a.manaGained > b.manaGained) end)
+        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topManaGainedValue, "MANA_GAINED", 0, viewTitle) end
+
+    elseif pageName == "DISPELS" then
         table.sort(sortedHealers, function(a, b) return (a.dispels == b.dispels) and (a.name < b.name) or (a.dispels > b.dispels) end)
         if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topDispelValue, "DISPELS", 0, viewTitle) end
-    elseif HealSmart_CurrentActivePage == 5 then
+        
+    elseif pageName == "BUFFS" then
         table.sort(sortedHealers, function(a, b) return (a.buffs == b.buffs) and (a.name < b.name) or (a.buffs > b.buffs) end)
-        local topBuffValue = 0
-        for _, data in ipairs(sortedHealers) do if data.buffs > topBuffValue then topBuffValue = data.buffs end end
-        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topBuffValue, "BUFFS", 0, viewTitle) end
-    elseif HealSmart_CurrentActivePage == 6 then
+        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topBuffsValue, "BUFFS", 0, viewTitle) end
+        
+    elseif pageName == "DEATHS" then
         table.sort(sortedHealers, function(a, b) return (a.deaths == b.deaths) and (a.name < b.name) or (a.deaths > b.deaths) end)
         if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topDeathValue, "DEATHS", 0, viewTitle) end
-    elseif HealSmart_CurrentActivePage == 7 then
+        
+    elseif pageName == "RESURRECTS" then
         table.sort(sortedHealers, function(a, b) return (a.resurrects == b.resurrects) and (a.name < b.name) or (a.resurrects > b.resurrects) end)
-        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topRessValue, "RESS", 0, viewTitle) end
-    elseif HealSmart_CurrentActivePage == 8 then
-        -- NEW SORT 8: Damage Done (DPS Matrix)
-        table.sort(sortedHealers, function(a, b) return (a.damageDone == b.damageDone) and (a.name < b.name) or (a.damageDone > b.damageDone) end)
-        
-        local topDamageDoneValue = 0
-        for _, data in ipairs(sortedHealers) do if data.damageDone > topDamageDoneValue then topDamageDoneValue = data.damageDone end end
-        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topDamageDoneValue, "DAMAGEDONE", 0, viewTitle) end
-    elseif HealSmart_CurrentActivePage == 9 then
-        -- NEW SORT 9: Damage Taken (Tank Mitigation Matrix)
-        table.sort(sortedHealers, function(a, b) return (a.damageTaken == b.damageTaken) and (a.name < b.name) or (a.damageTaken > b.damageTaken) end)
-        
-        local topDamageTakenValue = 0
-        for _, data in ipairs(sortedHealers) do if data.damageTaken > topDamageTakenValue then topDamageTakenValue = data.damageTaken end end
-        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topDamageTakenValue, "DAMAGETAKEN", 0, viewTitle) end
+        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topRessValue, "RESURRECTS", 0, viewTitle) end
     end
 end
 
--- EXPANDED MATRIX: Boundary checkpoint limits shifted up to 9 pages maximum capacity
 function HealSmart_ChangePage(direction)
+    local maxPages = #HealSmart_Pages
     HealSmart_CurrentActivePage = HealSmart_CurrentActivePage + direction
-    if HealSmart_CurrentActivePage > 9 then HealSmart_CurrentActivePage = 0 end
-    if HealSmart_CurrentActivePage < 0 then HealSmart_CurrentActivePage = 9 end
+    
+    if HealSmart_CurrentActivePage > maxPages then HealSmart_CurrentActivePage = 1 end
+    if HealSmart_CurrentActivePage < 1 then HealSmart_CurrentActivePage = maxPages end
+    
     if HealSmartSettings then HealSmartSettings.page = HealSmart_CurrentActivePage end
     HealSmart_RefreshCurrentPage()
 end
@@ -742,24 +770,46 @@ local function OnEvent_UNIT_DIED(eventType, sourceGUID, sourceName, sourceFlags,
 end;
 
 --  DISPEL TRACKING ENGINE (Runs out-of-combat!)
+--  DISPEL TRACKING ENGINE (Runs out-of-combat!)
 local function OnEvent_DISPELL(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags)
-    local isCasterGroupMember = (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
+    local isCasterGroupMember = (sourceGUID == playerGUID) or
+                                (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
                                 (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
                                 (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
 
     if isCasterGroupMember and sourceName then
         local cleanSourceName = string.match(sourceName, "([^-]+)")
-        local healerClass = groupRosterCache[cleanSourceName] or "UNKNOWN"
+        local healerClass = groupRosterCache[cleanSourceName]
+        if sourceGUID == playerGUID and not healerClass then _, healerClass = UnitClass("player") end
+        healerClass = healerClass or "UNKNOWN"
             
-        if healerClass and ALLOWED_CLASSES[healerClass] then
-            local healer = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, healerClass)
-            healer.dispels = healer.dispels + 1
+        if ALLOWED_CLASSES[healerClass] then
+            -- Safely query the active kampsession table array
+            local sessionHealers = HealSmart_GetActiveSessionHealers()
+            if sessionHealers then
+                local healer = HealSmart_GetOrCreateProfile(sessionHealers, sourceGUID, cleanSourceName, healerClass)
                 
-            if HealSmartSettings and HealSmartSettings.overallData then
-                local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanSourceName, healerClass)
-                overallHealer.dispels = overallHealer.dispels + 1
+                -- Update master totals
+                healer.dispels = (healer.dispels or 0) + 1
+                
+                -- NEW v0.8.0: Fetch your own dispel ability name safely from the engine
+                local _, dispelSpellName = select(12, CombatLogGetCurrentEventInfo())
+                if dispelSpellName then
+                    if not healer.spellDispels then healer.spellDispels = {} end
+                    healer.spellDispels[dispelSpellName] = (healer.spellDispels[dispelSpellName] or 0) + 1
+                end
+                    
+                if HealSmartSettings and HealSmartSettings.overallData then
+                    local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanSourceName, healerClass)
+                    overallHealer.dispels = (overallHealer.dispels or 0) + 1
+                    
+                    if dispelSpellName then
+                        if not overallHealer.spellDispels then overallHealer.spellDispels = {} end
+                        overallHealer.spellDispels[dispelSpellName] = (overallHealer.spellDispels[dispelSpellName] or 0) + 1
+                    end
+                end
+                coreFrame.RefreshStats()
             end
-            coreFrame.RefreshStats()
         end
     end
 end;
@@ -787,6 +837,81 @@ local function OnEvent_RESURRECT(eventType, sourceGUID, sourceName, sourceFlags,
     end
 end;
 
+--  DETECT MANA GAINED EFFECTS (v0.8.0 - Potions, Innervate, Mana Tide)
+local function OnEvent_MANAGAINS(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags)
+    local spellID, spellName = select(12, CombatLogGetCurrentEventInfo())
+    local amount, powerType = select(15, CombatLogGetCurrentEventInfo()) -- Amount is arg 15, PowerType is arg 16
+        
+    amount = tonumber(amount) or 0
+    powerType = tonumber(powerType) or 0 -- 0 is the universal Blizzard enum token for Mana
+
+    if amount > 0 and powerType == 0 and destName and not string.find(destGUID, "^Pet-") then
+        local isDestGroupMember = (destGUID == playerGUID) or
+                                  (bit.band(destFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
+                                  (bit.band(destFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
+                                  (bit.band(destFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
+
+        if isDestGroupMember then
+            local cleanDestName = string.match(destName, "([^-]+)")
+            local destClass = groupRosterCache[cleanDestName]
+            if destGUID == playerGUID and not destClass then _, destClass = UnitClass("player") end
+            destClass = destClass or "UNKNOWN"
+
+            if ALLOWED_CLASSES[destClass] then
+                local sessionHealers = HealSmart_GetActiveSessionHealers()
+                if sessionHealers then
+                    local profile = HealSmart_GetOrCreateProfile(sessionHealers, destGUID, cleanDestName, destClass)
+                    profile.manaGained = (profile.manaGained or 0) + amount
+                    
+                    if spellName then
+                        if not profile.spellManaGained then profile.spellManaGained = {} end
+                        profile.spellManaGained[spellName] = (profile.spellManaGained[spellName] or 0) + amount
+                    end
+
+                    if HealSmartSettings and HealSmartSettings.overallData then
+                        local overallProfile = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, destGUID, cleanDestName, destClass)
+                        overallProfile.manaGained = (overallProfile.manaGained or 0) + amount
+                        
+                        if spellName then
+                            if not overallProfile.spellManaGained then overallProfile.spellManaGained = {} end
+                            overallProfile.spellManaGained[spellName] = (overallProfile.spellManaGained[spellName] or 0) + amount
+                        end
+                    end
+                    coreFrame.RefreshStats()
+                end
+            end
+        end
+    end
+end;
+
+--  DETECT COMPACT AURA PROCS (v0.8.0 - Tier 3 Epiphany Engine Secured)
+local function OnEvent_AURA(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags)
+    if destGUID == playerGUID then
+        local _, buffName = select(12, CombatLogGetCurrentEventInfo())
+        
+        if buffName == "Epiphany" then
+            -- SAFETY GATE: Only log the 500 mana if a valid fight session dataset is actively running!
+            local sessionHealers = HealSmart_GetActiveSessionHealers()
+            if sessionHealers then
+                local _, playerClass = UnitClass("player")
+                local healer = HealSmart_GetOrCreateProfile(sessionHealers, playerGUID, "Mimma", playerClass or "PRIEST")
+                
+                healer.manaGained = (healer.manaGained or 0) + 500
+                if not healer.spellManaGained then healer.spellManaGained = {} end
+                healer.spellManaGained["Epiphany"] = (healer.spellManaGained["Epiphany"] or 0) + 500
+                
+                if HealSmartSettings and HealSmartSettings.overallData then
+                    local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, playerGUID, "Mimma", playerClass or "PRIEST")
+                    overallHealer.manaGained = (overallHealer.manaGained or 0) + 500
+                    if not overallHealer.spellManaGained then overallHealer.spellManaGained = {} end
+                    overallHealer.spellManaGained["Epiphany"] = (overallHealer.spellManaGained["Epiphany"] or 0) + 500
+                end
+                if coreFrame.RefreshStats then coreFrame.RefreshStats() end
+            end
+        end
+    end
+end;
+
 local function OnCombatLogEvent()
     -- Fetch the active writing sub-table for the current active fight session
     activeHealers = HealSmart_GetActiveSessionHealers()
@@ -805,7 +930,10 @@ local function OnCombatLogEvent()
 	
     elseif eventType == "SPELL_RESURRECT" then
         OnEvent_RESURRECT(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags);
-	
+
+    elseif eventType == "SPELL_AURA_APPLIED" then
+        OnEvent_AURA(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags);
+		
 	--  The next events only applies in combat, so bail out if not:
 	elseif isSessionActive then
         if (eventType == "SWING_DAMAGE" or eventType == "SPELL_DAMAGE" or eventType == "RANGE_DAMAGE" or eventType == "SPELL_PERIODIC_DAMAGE") then
@@ -819,10 +947,12 @@ local function OnCombatLogEvent()
 		
         elseif eventType == "SPELL_ABSORBED" then
             OnEvent_ABSORBED(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags);		
+
+        elseif eventType == "SPELL_ENERGIZE" then
+            OnEvent_MANAGAINS(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags);
         end; 
     end;
 end
-
 
 -- ==========================================
 -- HealSmart - Core Engine (v0.6.0) - PART 3B
@@ -1106,7 +1236,11 @@ function HealSmart_ReportCurrentPageToChat()
     local linesToPost = math.min(maxLines, #sortedHealers)
     if linesToPost <= 0 then return end
 
-    local baseTitle = HealSmart_PageTitles[HealSmart_CurrentActivePage] or "HealSmart Stats"
+    -- FIXED v0.8.0: Data-driven title extraction safely mapped via your 1-based lookupFramework
+    local pageRecord = HealSmart_GetPageRecord(HealSmart_CurrentActivePage)
+    local baseTitle = pageRecord and pageRecord.title or "HealSmart Stats"
+    local pageName = pageRecord and pageRecord.name;
+    if pageName =="FRONTPAGE" then return; end;
     
     -- Execute Text Outputs
     if isSoloWhisperLoop then
@@ -1120,21 +1254,31 @@ function HealSmart_ReportCurrentPageToChat()
         if data then
             local lineMessage = ""
             
-            if HealSmart_CurrentActivePage == 1 then
+            -- Pure data-driven token mapping for perfect chat reports
+            if pageName == "HEALING" then
                 local formattedAmt = FormatDotNumber and FormatDotNumber(data.effective) or data.effective
                 lineMessage = string.format("%d. %s - %s Effective Healing", i, data.name, formattedAmt)
-            elseif HealSmart_CurrentActivePage == 2 then
+            elseif pageName == "OVERHEALING" then
                 lineMessage = string.format("%d. %s - %.1f%% Healing Efficiency", i, data.name, data.percent)
-            elseif HealSmart_CurrentActivePage == 3 then
+            elseif pageName == "MANA_EFF" then
                 lineMessage = string.format("%d. %s - %.1f HPM", i, data.name, data.hpm)
-            elseif HealSmart_CurrentActivePage == 4 then
+            elseif pageName == "DISPELS" then
                 lineMessage = string.format("%d. %s - %d Dispels", i, data.name, data.dispels)
-            elseif HealSmart_CurrentActivePage == 5 then
+            elseif pageName == "BUFFS" then
                 lineMessage = string.format("%d. %s - %d Buffs", i, data.name, data.buffs)
-            elseif HealSmart_CurrentActivePage == 6 then
+            elseif pageName == "DEATHS" then
                 lineMessage = string.format("%d. %s - %d Deaths", i, data.name, data.deaths)
-            elseif HealSmart_CurrentActivePage == 7 then
+            elseif pageName == "RESURRECTS" then
                 lineMessage = string.format("%d. %s - %d Resurrects", i, data.name, data.resurrects)
+            elseif pageName == "DAMAGE_DONE" then
+                local formattedAmt = FormatDotNumber and FormatDotNumber(data.damageDone) or data.damageDone
+                lineMessage = string.format("%d. %s - %s Damage Done", i, data.name, formattedAmt)
+            elseif pageName == "DAMAGE_TAKEN" then
+                local formattedAmt = FormatDotNumber and FormatDotNumber(data.damageTaken) or data.damageTaken
+                lineMessage = string.format("%d. %s - %s Damage Taken", i, data.name, formattedAmt)
+            elseif pageName == "MANA_GAINED" then
+                local formattedAmt = FormatDotNumber and FormatDotNumber(data.manaGained) or data.manaGained
+                lineMessage = string.format("%d. %s - %s Mana Gained", i, data.name, formattedAmt)
             end
 
             if lineMessage ~= "" then
