@@ -471,20 +471,26 @@ function HealSmart_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
         
         bar.leftText:SetText(data.name)
         
-        -- Dynamic layout title syncer utilizing the centralized global dictionary
+        -- DYNAMIC PER-SECOND CALCULATIONS FOR HPS, DPS AND DTPS (v0.8.0)
+        local fightSeconds = HealSmart_CurrentFightDuration or 0
+        if fightSeconds < 1 then fightSeconds = 1 end
+
+        -- FIXED v0.8.0: This single line now dynamically controls the header for ALL 10 pages cleanly
         headerText:SetText(viewTitle or HealSmart_PageTitles[HealSmart_CurrentActivePage] or "HealSmart")
 
         if viewType == "HEAL" then
             local currentTotalRaid = totalRaidEffective or 1
             if currentTotalRaid == 0 then currentTotalRaid = 1 end
             local raidSharePercent = (data.effective / currentTotalRaid) * 100
-            local formattedAmt = FormatDotNumber(data.effective)
-            bar.rightText:SetText(string.format("%s - %.1f%%", formattedAmt, raidSharePercent))
+            local formattedAmt = FormatDotNumber and FormatDotNumber(data.effective) or data.effective
+            
+            local hps = data.effective / fightSeconds
+            bar.rightText:SetText(string.format("%s (%.0f HPS) - %.1f%%", formattedAmt, hps, raidSharePercent))
             
         elseif viewType == "EFFICIENCY" then
             local grossHealing = data.effective + data.overheal
-            local formattedNet = FormatDotNumber(data.effective)
-            local formattedGross = FormatDotNumber(grossHealing)
+            local formattedNet = FormatDotNumber and FormatDotNumber(data.effective) or data.effective
+            local formattedGross = FormatDotNumber and FormatDotNumber(grossHealing) or grossHealing
             bar.rightText:SetText(string.format("%s / %s - %.0f%%", formattedNet, formattedGross, data.percent))
             
         elseif viewType == "MANA" then
@@ -510,6 +516,18 @@ function HealSmart_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
         elseif viewType == "RESS" then
             bar.statusBar:SetValue((maxVal > 0) and ((data.resurrects / maxVal) * 100) or 0)
             bar.rightText:SetText(string.format("%d resurrects", data.resurrects))
+            
+        elseif viewType == "DAMAGEDONE" then
+            bar.statusBar:SetValue((maxVal > 0) and ((data.damageDone / maxVal) * 100) or 0)
+            local formattedDmg = FormatDotNumber and FormatDotNumber(data.damageDone) or data.damageDone
+            local dps = data.damageDone / fightSeconds
+            bar.rightText:SetText(string.format("%s dmg (%.0f DPS)", formattedDmg, dps))
+            
+        elseif viewType == "DAMAGETAKEN" then
+            bar.statusBar:SetValue((maxVal > 0) and ((data.damageTaken / maxVal) * 100) or 0)
+            local formattedTaken = FormatDotNumber and FormatDotNumber(data.damageTaken) or data.damageTaken
+            local dtps = data.damageTaken / fightSeconds
+            bar.rightText:SetText(string.format("%s taken (%.0f DTPS)", formattedTaken, dtps))
         end
         bar:Show()
     end
@@ -590,6 +608,10 @@ loaderFrame:SetScript("OnEvent", function(self, event, addonName)
         scrollChild:SetWidth(container:GetWidth() - 22)
         infoText:SetWidth(container:GetWidth() - 32)
         
+        if HealSmartSettings.selectedViewSessionID == nil then 
+            HealSmartSettings.selectedViewSessionID = 0 
+        end
+
         if HealSmart_SetInitialPage then 
             HealSmart_SetInitialPage(HealSmartSettings.page) 
         end

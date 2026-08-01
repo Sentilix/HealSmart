@@ -11,7 +11,9 @@ HealSmart_PageTitles = {
     [4] = "4. Dispels Done",
     [5] = "5. Buffs",
     [6] = "6. Deaths",
-    [7] = "7. Resurrects Cast"
+    [7] = "7. Resurrects Cast",
+    [8] = "8. Damage Done",
+    [9] = "9. Damage Taken"
 }
 
 HealSmart_SpellCostDB = {

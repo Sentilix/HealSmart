@@ -5,10 +5,11 @@
 -- Configuration Constants
 HEALSMART_MAX_SAVED_SESSIONS = 20
 
-HealSmart_SelectedViewSessionID = 0 
 HealSmart_CurrentActivePage = 0 
+HealSmart_CurrentFightDuration = 0
 
 -- Runtime cache objects
+local playerGUID = UnitGUID("player")
 local groupRosterCache = {}
 local currentFilterMode = "ALL"
 local _, playerClassFilename = UnitClass("player")
@@ -36,7 +37,7 @@ function HealSmart_GetOrCreateProfile(dataTable, guid, name, classToken)
         local unitToken = "player"
         local finalClass = classToken
         
-        if guid ~= UnitGUID("player") then
+        if guid ~= playerGUID then
             if IsInRaid() then
                 for i = 1, GetNumGroupMembers() do
                     if UnitGUID("raid"..i) == guid then 
@@ -77,8 +78,12 @@ function HealSmart_GetOrCreateProfile(dataTable, guid, name, classToken)
             deaths = 0,
             resurrects = 0,
             dispels = 0,
-            buffs = 0
+            buffs = 0,
+            -- NEW PIPELINES FOR v0.8.0: Initialized to track multi-meter mechanics safely
+            damageDone = 0,
+            damageTaken = 0
         }
+
     end
     return dataTable[guid]
 end
@@ -142,16 +147,17 @@ coreFrame.RefreshStats = function()
 
     local dataSourceTable = nil
     local sessionLabel = "Current Fight"
+    local activeViewID = HealSmartSettings and HealSmartSettings.selectedViewSessionID or 0
 
-    if HealSmart_SelectedViewSessionID == -1 then
+    if activeViewID == -1 then
         dataSourceTable = HealSmartSettings and HealSmartSettings.overallData
         sessionLabel = "Overall Total"
     else
         if HealSmartSettings and HealSmartSettings.sessions then
             local targetIdx = HealSmartSettings.activeSessionIndex or 1
-            if HealSmart_SelectedViewSessionID > 0 then
+            if activeViewID > 0 then
                 for idx, session in ipairs(HealSmartSettings.sessions) do
-                    if session.id == HealSmart_SelectedViewSessionID then
+                    if session.id == activeViewID then
                         targetIdx = idx
                         sessionLabel = "Fight #" .. session.id
                         break
@@ -165,7 +171,10 @@ coreFrame.RefreshStats = function()
 
     if dataSourceTable then
         for guid, data in pairs(dataSourceTable) do
-            if currentFilterMode == "CLASS" and data.class ~= playerClassFilename then
+            -- FIXED FOR v0.8.0: Disable class locks on damage pages so all raiders flow through
+            local isDamagePage = (HealSmart_CurrentActivePage == 8 or HealSmart_CurrentActivePage == 9)
+            
+            if currentFilterMode == "CLASS" and data.class ~= playerClassFilename and not isDamagePage then
                 -- Filtered
             else
                 local total = data.effective + data.overheal
@@ -175,6 +184,8 @@ coreFrame.RefreshStats = function()
                 data.resurrects = data.resurrects or 0
                 data.dispels = data.dispels or 0
                 data.buffs = data.buffs or 0
+                data.damageDone = data.damageDone or 0
+                data.damageTaken = data.damageTaken or 0
 
                 if data.manaUsed > 0 then
                     data.hpm = data.effective / data.manaUsed
@@ -185,27 +196,27 @@ coreFrame.RefreshStats = function()
                     data.hpm = 0
                 end
 
-                -- NEW INTELLIGENT FILTRATION GATEWAY: Discards baseline 0-records cleanly based on active tab context
+                -- NEW INTELLIGENT FILTRATION GATEWAY: Supports pages 8 and 9 cleanly
                 local shouldInclude = false
                 
                 if HealSmart_CurrentActivePage == 1 or HealSmart_CurrentActivePage == 2 then
-                    -- Pages 1 & 2: Only show players who actually performed healing actions
                     if data.effective > 0 or data.overheal > 0 then shouldInclude = true end
                 elseif HealSmart_CurrentActivePage == 3 then
-                    -- Page 3 (Mana): Include if they spent mana, OR if they heal > 0 with 0 mana (Clearcasting exception)
                     if data.manaUsed > 0 or data.effective > 0 then shouldInclude = true end
                 elseif HealSmart_CurrentActivePage == 4 then
-                    -- Page 4: Dispels Done
                     if data.dispels > 0 then shouldInclude = true end
                 elseif HealSmart_CurrentActivePage == 5 then
-                    -- Page 5: Buffs Applied
                     if data.buffs > 0 then shouldInclude = true end
                 elseif HealSmart_CurrentActivePage == 6 then
-                    -- Page 6: Deaths
                     if data.deaths > 0 then shouldInclude = true end
                 elseif HealSmart_CurrentActivePage == 7 then
-                    -- Page 7: Resurrects Cast
                     if data.resurrects > 0 then shouldInclude = true end
+                elseif HealSmart_CurrentActivePage == 8 then
+                    -- Page 8: Damage Done
+                    if data.damageDone > 0 then shouldInclude = true end
+                elseif HealSmart_CurrentActivePage == 9 then
+                    -- Page 9: Damage Taken
+                    if data.damageTaken > 0 then shouldInclude = true end
                 end
 
                 if shouldInclude then
@@ -220,6 +231,7 @@ coreFrame.RefreshStats = function()
         end
     end
 
+    -- Render blank state if no dataset rows found
     if #sortedHealers == 0 then
         local baseTitle = HealSmart_PageTitles[HealSmart_CurrentActivePage] or "HealSmart"
         local pageTitle = baseTitle .. " (" .. sessionLabel .. ")"
@@ -227,8 +239,9 @@ coreFrame.RefreshStats = function()
         return
     end
 
-    local viewTitle = ""
+    -- Compile dynamic strings headings using the unified global dictionary array
     local baseTitle = HealSmart_PageTitles[HealSmart_CurrentActivePage] or "HealSmart"
+    local viewTitle = baseTitle .. " (" .. sessionLabel .. ")"
     viewTitle = baseTitle .. " (" .. sessionLabel .. ")"
 
     -- Sort and route datasets targeting the UI bar factory loop
@@ -255,14 +268,28 @@ coreFrame.RefreshStats = function()
     elseif HealSmart_CurrentActivePage == 7 then
         table.sort(sortedHealers, function(a, b) return (a.resurrects == b.resurrects) and (a.name < b.name) or (a.resurrects > b.resurrects) end)
         if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topRessValue, "RESS", 0, viewTitle) end
+    elseif HealSmart_CurrentActivePage == 8 then
+        -- NEW SORT 8: Damage Done (DPS Matrix)
+        table.sort(sortedHealers, function(a, b) return (a.damageDone == b.damageDone) and (a.name < b.name) or (a.damageDone > b.damageDone) end)
+        
+        local topDamageDoneValue = 0
+        for _, data in ipairs(sortedHealers) do if data.damageDone > topDamageDoneValue then topDamageDoneValue = data.damageDone end end
+        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topDamageDoneValue, "DAMAGEDONE", 0, viewTitle) end
+    elseif HealSmart_CurrentActivePage == 9 then
+        -- NEW SORT 9: Damage Taken (Tank Mitigation Matrix)
+        table.sort(sortedHealers, function(a, b) return (a.damageTaken == b.damageTaken) and (a.name < b.name) or (a.damageTaken > b.damageTaken) end)
+        
+        local topDamageTakenValue = 0
+        for _, data in ipairs(sortedHealers) do if data.damageTaken > topDamageTakenValue then topDamageTakenValue = data.damageTaken end end
+        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topDamageTakenValue, "DAMAGETAKEN", 0, viewTitle) end
     end
 end
 
--- BOUNDARY MATRIX: Maintained at 7 pages maximum capacity
+-- EXPANDED MATRIX: Boundary checkpoint limits shifted up to 9 pages maximum capacity
 function HealSmart_ChangePage(direction)
     HealSmart_CurrentActivePage = HealSmart_CurrentActivePage + direction
-    if HealSmart_CurrentActivePage > 7 then HealSmart_CurrentActivePage = 0 end
-    if HealSmart_CurrentActivePage < 0 then HealSmart_CurrentActivePage = 7 end
+    if HealSmart_CurrentActivePage > 9 then HealSmart_CurrentActivePage = 0 end
+    if HealSmart_CurrentActivePage < 0 then HealSmart_CurrentActivePage = 9 end
     if HealSmartSettings then HealSmartSettings.page = HealSmart_CurrentActivePage end
     HealSmart_RefreshCurrentPage()
 end
@@ -425,6 +452,101 @@ local function OnCombatLogEvent()
             end
         end
 
+    -- --- 8A. DETECT REFLECTED SHIELDS & THORNS (v0.8.0 - Factual Source Routing Locked) ---
+    elseif isSessionActive and eventType == "DAMAGE_SHIELD" then
+        local _, _, _, sourceGUID, sourceName, sourceFlags, _, _, _, _ = CombatLogGetCurrentEventInfo()
+        local amount = select(15, CombatLogGetCurrentEventInfo()) or 0
+
+        if amount > 0 then
+            -- FACTUAL ROUTING: The source (player/tank carrying the thorns armor) is the one earning the Damage Dealt!
+            local isPlayerSelf = (sourceGUID == playerGUID)
+            local isSourceGroupMember = (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
+                                        (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
+                                        (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
+
+            if (isPlayerSelf or isSourceGroupMember) and sourceName then
+                local cleanSourceName = string.match(sourceName, "([^-]+)")
+                
+                -- Secure class routing: Pull from cache or live query the engine if testing solo
+                local sourceClass = groupRosterCache[cleanSourceName]
+                if isPlayerSelf and not sourceClass then
+                    _, sourceClass = UnitClass("player")
+                end
+                
+                sourceClass = sourceClass or "UNKNOWN"
+
+                if ALLOWED_CLASSES[sourceClass] then
+                    -- Credit the reflected damage directly to the player generating the thorns recoil
+                    local profile = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, sourceClass)
+                    profile.damageDone = profile.damageDone + amount
+                    
+                    if HealSmartSettings and HealSmartSettings.overallData then
+                        local overallProfile = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanSourceName, sourceClass)
+                        overallProfile.damageDone = overallProfile.damageDone + amount
+                    end
+                    coreFrame.RefreshStats()
+                end
+            end
+        end
+
+    -- --- 8B. STANDARD DAMAGE DONE & DAMAGE TAKEN MOTORS (Keep your existing swing/spell code below) ---
+    elseif isSessionActive and (eventType == "SWING_DAMAGE" or eventType == "SPELL_DAMAGE" or eventType == "RANGE_DAMAGE") then       
+        local amount
+        -- SWING_DAMAGE uses argument 12, while all SPELL variants (including periodic/misc/thorns) use argument 15
+        if eventType == "SWING_DAMAGE" then
+            amount = select(12, CombatLogGetCurrentEventInfo())
+        else
+            amount = select(15, CombatLogGetCurrentEventInfo())
+        end
+        
+        amount = amount or 0
+        
+        if amount > 0 then
+            -- A: DAMAGE DONE DETECTION (Who is dealing damage?)
+            local isSourceGroupMember = (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
+                                        (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
+                                        (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
+
+            -- Track damage dealt by group members, filtering out pets and environment
+            if isSourceGroupMember and sourceName and not string.find(sourceGUID, "^Pet-") then
+                local cleanSourceName = string.match(sourceName, "([^-]+)")
+                local sourceClass = groupRosterCache[cleanSourceName] or "UNKNOWN"
+                
+                -- Add to active session
+                local profile = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, sourceClass)
+                profile.damageDone = profile.damageDone + amount
+                
+                -- Accumulate into the night master total database sheet
+                if HealSmartSettings and HealSmartSettings.overallData then
+                    local overallProfile = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanSourceName, sourceClass)
+                    overallProfile.damageDone = overallProfile.damageDone + amount
+                end
+                coreFrame.RefreshStats()
+            end
+
+            -- B: DAMAGE TAKEN DETECTION (Who is taking damage?)
+            local isDestGroupMember = (bit.band(destFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
+                                      (bit.band(destFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
+                                      (bit.band(destFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
+
+            -- Track damage received by group members (Tanks and players catching mechanics)
+            if isDestGroupMember and destName and not string.find(destGUID, "^Pet-") then
+                local cleanDestName = string.match(destName, "([^-]+)")
+                local destClass = groupRosterCache[cleanDestName] or "UNKNOWN"
+                
+                -- Add to active session
+                local profile = HealSmart_GetOrCreateProfile(activeHealers, destGUID, cleanDestName, destClass)
+                profile.damageTaken = profile.damageTaken + amount
+                
+                -- Accumulate into overall master total
+                if HealSmartSettings and HealSmartSettings.overallData then
+                    local overallProfile = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, destGUID, cleanDestName, destClass)
+                    overallProfile.damageTaken = overallProfile.damageTaken + amount
+                end
+                coreFrame.RefreshStats()
+            end
+        end
+
     -- ==========================================
     -- HealSmart - Core Engine (v0.7.0) - PART 3A (Combat Log Parser - Part 2)
     -- ==========================================
@@ -567,8 +689,9 @@ coreFrame:SetScript("OnEvent", function(self, event, ...)
     elseif event == "PLAYER_REGEN_DISABLED" then
         inTrueCombat = true
         timeSinceCombatEnd = 0
+        -- FIXED v0.8.0: Reset the precise fight duration clock on pull
+        HealSmart_CurrentFightDuration = 0
         if not isSessionActive then
-            -- Trigger the automated history list rotation on pull
             HealSmart_CreateNewSession()
             isSessionActive = true
             coreFrame.RefreshStats()
@@ -578,13 +701,40 @@ coreFrame:SetScript("OnEvent", function(self, event, ...)
         timeSinceCombatEnd = 0
     elseif event == "GROUP_ROSTER_UPDATE" or event == "PLAYER_ENTERING_WORLD" then
         UpdateGroupRosterCache()
+        
+        local currentlyInGroup = IsInGroup() or IsInRaid()
+        if currentlyInGroup and not wasInGroupLastCheck then
+            if HealSmartSettings and HealSmartSettings.groupJoinBehavior then
+                local behavior = HealSmartSettings.groupJoinBehavior
+                if behavior == 1 then
+                    HealSmart_ExecuteMasterWipeData()
+                    if HealSmart_Print then HealSmart_Print("Automatically cleared history due to group join settings.") end
+                elseif behavior == 3 then
+                    StaticPopup_Show("HEALSMART_GROUP_JOIN_PROMPT")
+                end
+            end
+        end
+        wasInGroupLastCheck = currentlyInGroup
     end
 end)
 
 UpdateGroupRosterCache()
 
--- Grace period ticker
+-- Inside your existing OnUpdate frame ticker loop, add this check:
+local totalElapsed = 0
 coreFrame:SetScript("OnUpdate", function(self, elapsed)
+    if inTrueCombat then
+        totalElapsed = totalElapsed + elapsed
+        -- Every time 1 full second passes, tick the master combat clock up by 1
+        if totalElapsed >= 1 then
+            HealSmart_CurrentFightDuration = (HealSmart_CurrentFightDuration or 0) + 1
+            totalElapsed = 0
+            
+            -- Live update bars while fighting so DPS/HPS changes in real-time
+            if coreFrame.RefreshStats then coreFrame.RefreshStats() end
+        end
+    end
+    
     if isSessionActive and not inTrueCombat then
         timeSinceCombatEnd = timeSinceCombatEnd + elapsed
         if timeSinceCombatEnd >= HEALSMART_OUT_OF_COMBAT_GRACE then

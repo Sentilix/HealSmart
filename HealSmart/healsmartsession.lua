@@ -84,15 +84,14 @@ function HealSmart_UpdateSessionListWindow()
     local overallBtn = sessionButtonsCache[rowIdx] or CreateSessionRow(rowIdx)
     overallBtn.titleText:SetText("[Overall Total]")
     
-    if HealSmart_SelectedViewSessionID == -1 then
+    if HealSmartSettings.selectedViewSessionID == -1 then
         overallBtn.titleText:SetTextColor(1.0, 0.82, 0.0, 1.0)
     else
         overallBtn.titleText:SetTextColor(1.0, 1.0, 1.0, 1.0)
     end
     
     overallBtn:SetScript("OnClick", function()
-        HealSmart_SelectedViewSessionID = -1 
-        -- FIXED: Use the global refresh bridge to force a total layout recalculation instantly
+        HealSmartSettings.selectedViewSessionID = -1 
         if HealSmart_RefreshCurrentPage then HealSmart_RefreshCurrentPage() end
         sessionFrame:Hide()
     end)
@@ -110,9 +109,9 @@ function HealSmart_UpdateSessionListWindow()
                 local isCurrentLiveSlot = (i == HealSmartSettings.activeSessionIndex)
                 local isThisSelected = false
                 
-                if HealSmart_SelectedViewSessionID == 0 and isCurrentLiveSlot then
+                if HealSmartSettings.selectedViewSessionID == 0 and isCurrentLiveSlot then
                     isThisSelected = true
-                elseif HealSmart_SelectedViewSessionID == sessionData.id then
+                elseif HealSmartSettings.selectedViewSessionID == sessionData.id then
                     isThisSelected = true
                 end
                 
@@ -124,11 +123,10 @@ function HealSmart_UpdateSessionListWindow()
                 
                 btn:SetScript("OnClick", function()
                     if i == HealSmartSettings.activeSessionIndex then
-                        HealSmart_SelectedViewSessionID = 0
+                        HealSmartSettings.selectedViewSessionID = 0
                     else
-                        HealSmart_SelectedViewSessionID = sessionData.id
+                        HealSmartSettings.selectedViewSessionID = sessionData.id
                     end
-                    -- FIXED: Use the global refresh bridge to force a total layout recalculation instantly
                     if HealSmart_RefreshCurrentPage then HealSmart_RefreshCurrentPage() end
                     sessionFrame:Hide()
                 end)
