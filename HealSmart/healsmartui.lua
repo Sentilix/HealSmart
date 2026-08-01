@@ -247,7 +247,7 @@ sessionButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
 -- Lock Toggle Button (12x12 - FIXED ANCHOR: Tied to the left of sessionButton)
 lockButton = CreateFrame("Button", nil, header)
 lockButton:SetSize(12, 12)
-lockButton:SetPoint("RIGHT", sessionButton, "LEFT", -4, 1)
+lockButton:SetPoint("RIGHT", sessionButton, "LEFT", -4, 0)
 lockButton:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
 if lockButton:GetNormalTexture() then lockButton:GetNormalTexture():SetAllPoints(lockButton) end
 lockButton:SetScript("OnClick", function()
@@ -529,6 +529,180 @@ function HealSmart_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
             local dtps = data.damageTaken / fightSeconds
             bar.rightText:SetText(string.format("%s taken (%.0f DTPS)", formattedTaken, dtps))
         end
+
+        -- NEW v0.8.0: Fully Mirrored Per-Ability Tooltip Engine (HPS/DPS/Personal Pct Synced)
+        bar:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
+            GameTooltip:ClearLines()
+            
+            -- Title layout string: Displays Name and Class
+            GameTooltip:AddLine(data.name .. " (" .. (data.class or "UNKNOWN") .. ")", 1, 0.82, 0)
+            GameTooltip:AddLine(" ") -- Blank gap layout line
+            
+            -- Secure active fight clock duration, clamping at minimum 1 second to prevent division by zero
+            local fightSeconds = HealSmart_CurrentFightDuration or 0
+            if fightSeconds < 1 then fightSeconds = 1 end
+
+            -- ROW 1 & 2: HEALING DONE & HEAL VS OVERHEAL SPECIFIC TOOLTIPS
+            if HealSmart_CurrentActivePage == 1 or HealSmart_CurrentActivePage == 2 then
+                GameTooltip:AddLine("Top Healing Abilities:", 1, 1, 1)
+                if data.spellHeals then
+                    local sortedSpells = {}
+                    for spellName, spellData in pairs(data.spellHeals) do
+                        table.insert(sortedSpells, { name = spellName, eff = spellData.effective, oh = spellData.overheal })
+                    end
+                    table.sort(sortedSpells, function(a, b) return a.eff > b.eff end)
+                    
+                    local lineCount = 1
+                    for i = 1, #sortedSpells do
+                        -- Stop the print loop immediately if we have already listed the top 8 elements
+                        if lineCount > 8 then break end
+                        
+                        local s = sortedSpells[i]
+                        
+                        if HealSmart_CurrentActivePage == 1 then
+                            -- FIXED v0.8.0: Skip legacy 0-healing ghost records entirely on Page 1
+                            if s.eff > 0 then
+                                local personalSharePct = (data.effective > 0) and ((s.eff / data.effective) * 100) or 0
+                                local formattedAmt = FormatDotNumber and FormatDotNumber(s.eff) or s.eff
+                                local spellHps = s.eff / fightSeconds
+                                
+                                GameTooltip:AddDoubleLine(
+                                    lineCount .. ". " .. s.name, 
+                                    string.format("%s (%.0f HPS) - %.1f%%", formattedAmt, spellHps, personalSharePct), 
+                                    0.8, 0.8, 0.8, 1, 1, 1
+                               )
+                               lineCount = lineCount + 1
+                            end
+                        else
+                            -- Page 2 (Overhealing): Show everything since raw efficiency can contain gross damage logs
+                            local spellGross = s.eff + s.oh
+                            local spellEfficiencyPct = (spellGross > 0) and ((s.eff / spellGross) * 100) or 0
+                            local formattedNet = FormatDotNumber and FormatDotNumber(s.eff) or s.eff
+                            local formattedGross = FormatDotNumber and FormatDotNumber(spellGross) or spellGross
+                            
+                            GameTooltip:AddDoubleLine(
+                                lineCount .. ". " .. s.name, 
+                                string.format("%s / %s - %.0f%%", formattedNet, formattedGross, spellEfficiencyPct), 
+                                0.8, 0.8, 0.8, 1, 0.3, 0.3
+                            )
+                            lineCount = lineCount + 1
+                        end
+                    end
+                end
+                
+            -- ROW 3: MANA EFFICIENCY SPECIFIC TOOLTIP
+            elseif HealSmart_CurrentActivePage == 3 then
+                GameTooltip:AddLine("Mana Efficiency Details:", 1, 1, 1)
+                local formattedMana = FormatDotNumber and FormatDotNumber(data.manaUsed) or data.manaUsed
+                GameTooltip:AddDoubleLine("Total Mana Spent:", formattedMana .. " mana", 0.8, 0.8, 0.8, 1, 1, 1)
+                GameTooltip:AddDoubleLine("Calculated Yield:", string.format("%.1f HPM", data.hpm), 0.8, 0.8, 0.8, 1, 0.82, 0)
+                
+            -- ROW 5: BUFFS APPLIED SPECIFIC TOOLTIP (v0.8.0 Nil-Safeguarded)
+            elseif HealSmart_CurrentActivePage == 5 then
+                GameTooltip:AddLine("Top Buffs Applied:", 1, 1, 1)
+                
+                -- FIXED: Safe verification check ensures we never loop a missing nil array
+                if data.spellBuffs and next(data.spellBuffs) ~= nil then
+                    local sortedBuffs = {}
+                    for buffName, count in pairs(data.spellBuffs) do
+                        table.insert(sortedBuffs, { name = buffName, amt = count })
+                    end
+                    table.sort(sortedBuffs, function(a, b) return a.amt > b.amt end)
+                    
+                    for i = 1, math.min(8, #sortedBuffs) do
+                        local b = sortedBuffs[i]
+                        local personalSharePct = (data.buffs > 0) and ((b.amt / data.buffs) * 100) or 0
+                        
+                        GameTooltip:AddDoubleLine(
+                            i .. ". " .. b.name, 
+                            string.format("%d buffs (%.0f%%)", b.amt, personalSharePct), 
+                            0.8, 0.8, 0.8, 1, 1, 1
+                        )
+                    end
+                else
+                    -- Elegant fallback string for old legacy datasets lacking detailed logs
+                    GameTooltip:AddLine("No detailed buff logs available for this session.", 0.6, 0.6, 0.6, true)
+                end
+
+            -- ROW 8: DAMAGE DONE SPECIFIC TOOLTIP
+            elseif HealSmart_CurrentActivePage == 8 then
+                GameTooltip:AddLine("Top Damage Abilities:", 1, 1, 1)
+                if data.spellDamage then
+                    local sortedSpells = {}
+                    for spellName, dmgAmt in pairs(data.spellDamage) do
+                        table.insert(sortedSpells, { name = spellName, amt = dmgAmt })
+                    end
+                    table.sort(sortedSpells, function(a, b) return a.amt > b.amt end)
+                    
+                    for i = 1, math.min(8, #sortedSpells) do
+                        local s = sortedSpells[i]
+                        -- Mirrored Page 8 Format: SpellName | 45.200 dmg (950 DPS) - 65.0%
+                        local personalSharePct = (data.damageDone > 0) and ((s.amt / data.damageDone) * 100) or 0
+                        local formattedAmt = FormatDotNumber and FormatDotNumber(s.amt) or s.amt
+                        local spellDps = s.amt / fightSeconds
+                        
+                        GameTooltip:AddDoubleLine(
+                            i .. ". " .. s.name, 
+                            string.format("%s dmg (%.0f DPS) - %.1f%%", formattedAmt, spellDps, personalSharePct), 
+                            0.8, 0.8, 0.8, 1, 1, 1
+                        )
+                    end
+                end
+
+            -- ROW 9: DAMAGE TAKEN SPECIFIC TOOLTIP (v0.8.0 Advanced Color-Coded Matrix)
+            elseif HealSmart_CurrentActivePage == 9 then
+                GameTooltip:AddLine("Top Damage Sources Taken:", 1, 1, 1)
+                if data.spellTaken then
+                    local sortedSources = {}
+                    for sourceKey, sourceData in pairs(data.spellTaken) do
+                        local finalAmt = 0
+                        local finalColor = "physical"
+                        
+                        if type(sourceData) == "table" then
+                            finalAmt = sourceData.amt or 0
+                            finalColor = sourceData.color or "physical"
+                        else
+                            -- Legacy data fallback loop: Treat the raw number value as the amount
+                            finalAmt = tonumber(sourceData) or 0
+                        end
+                        
+                        table.insert(sortedSources, { key = sourceKey, amt = finalAmt, color = finalColor })
+                    end
+                    table.sort(sortedSources, function(a, b) return a.amt > b.amt end)
+                    
+                    -- Pre-compiled color library layout map targeting RGB floats
+                    local schoolColors = {
+                        physical = { 0.9, 0.9, 0.9 }, -- Clean light grey/white
+                        fire     = { 1.0, 0.3, 0.3 }, -- Burning red
+                        nature   = { 0.3, 1.0, 0.3 }, -- Vibrant nature green
+                        poison   = { 0.6, 0.4, 0.2 }, -- Earthen poison brown
+                        shadow   = { 0.6, 0.3, 0.9 }  -- Void shadow purple
+                    }
+                    
+                    for i = 1, math.min(8, #sortedSources) do
+                        local s = sortedSources[i]
+                        local personalSharePct = (data.damageTaken > 0) and ((s.amt / data.damageTaken) * 100) or 0
+                        local formattedAmt = FormatDotNumber and FormatDotNumber(s.amt) or s.amt
+                        local sourceDtps = s.amt / fightSeconds
+                        
+                        -- Fetch color layout configuration dynamically or fallback to physical
+                        local rgb = schoolColors[s.color] or schoolColors["physical"]
+                        
+                        -- Print the colored entry line into the GameTooltip view canvas
+                        GameTooltip:AddDoubleLine(
+                            i .. ". " .. s.key, 
+                            string.format("%s taken (%.0f DTPS) - %.1f%%", formattedAmt, sourceDtps, personalSharePct), 
+                            rgb[1], rgb[2], rgb[3], 1, 1, 1
+                        )
+                    end
+                end
+            end
+            
+            GameTooltip:Show()
+        end)
+
+
         bar:Show()
     end
 end
