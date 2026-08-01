@@ -599,11 +599,15 @@ function HealSmart_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
                 if data.spellMana and next(data.spellMana) ~= nil then
                     local sortedManaSpells = {}
                     for spellName, manaData in pairs(data.spellMana) do
-                        -- Fetch the factual raw mana spent AND the factual raw healing accumulated inside core
-                        local rawSpent = manaData.manaUsed or 0
-                        local rawHealAmt = manaData.effective or 0
+                        -- Cross-reference checking: Kun hvis den findes i dit fejlfrie healing-meter!
+                        local rawHealAmt = 0
+                        if data.spellHeals and data.spellHeals[spellName] then
+                            rawHealAmt = data.spellHeals[spellName].effective or 0
+                        end
                         
-                        table.insert(sortedManaSpells, { name = spellName, spent = rawSpent, eff = rawHealAmt })
+                        if rawHealAmt > 0 then
+                            table.insert(sortedManaSpells, { name = spellName, spent = manaData.manaUsed or 0, eff = rawHealAmt })
+                        end
                     end
                     -- Sort from the highest mana consuming rank to the lowest
                     table.sort(sortedManaSpells, function(a, b) return a.spent > b.spent end)
@@ -707,10 +711,13 @@ function HealSmart_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
                     -- Pre-compiled color library layout map targeting RGB floats
                     local schoolColors = {
                         physical = { 0.9, 0.9, 0.9 }, -- Clean light grey/white
+                        holy     = { 1.0, 0.9, 0.5 }, -- Bright golden holy yellow
                         fire     = { 1.0, 0.3, 0.3 }, -- Burning red
                         nature   = { 0.3, 1.0, 0.3 }, -- Vibrant nature green
                         poison   = { 0.6, 0.4, 0.2 }, -- Earthen poison brown
-                        shadow   = { 0.6, 0.3, 0.9 }  -- Void shadow purple
+                        frost    = { 0.4, 0.7, 1.0 }, -- Clean ice frost blue
+                        shadow   = { 0.6, 0.3, 0.9 }, -- Void shadow purple
+                        arcane   = { 1.0, 0.4, 1.0 }  -- Vibrant Arcane Mage pink/magenta (NEW!)
                     }
                     
                     for i = 1, math.min(8, #sortedSources) do

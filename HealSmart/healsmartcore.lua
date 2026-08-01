@@ -343,281 +343,318 @@ local function GetLiveSpellManaCost(spellID)
     return 0
 end
 
-local function OnCombatLogEvent()
-    -- Fetch the active writing sub-table for the current active fight session
-    local activeHealers = HealSmart_GetActiveSessionHealers()
-    if not activeHealers then return end
+-- =========================================================================
+-- --- HealSmart - Core Engine (v0.8.0) - OnCombatLogEvent Pipeline ---
+-- =========================================================================
+local activeHealers = nil;
 
-    local timestamp, eventType, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags = CombatLogGetCurrentEventInfo()
+--  SPELL_CAST_SUCCESS - processed both IN and OUT of combat)
+local function OnEvent_SPELL_CAST_SUCCESS(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags)
+    local _, spellName = select(12, CombatLogGetCurrentEventInfo())
+    local cleanSourceName = sourceName and string.match(sourceName, "([^-]+)") or "Unknown"
+    local healerClass = groupRosterCache[cleanSourceName]
 
-    -- --- 1. HYBRID MANA WATCH ENGINE (Requires session tracking check) ---
-    if eventType == "SPELL_CAST_SUCCESS" and isSessionActive then
-        local spellID, spellName, _ = select(12, CombatLogGetCurrentEventInfo())
-        
-        local isGroupMember = (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
-                              (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
-                              (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
+    if sourceGUID == playerGUID and not healerClass then _, healerClass = UnitClass("player") end
+    healerClass = healerClass or "UNKNOWN"
 
-        if isGroupMember and sourceName then
-            local dbData = nil
-            if spellID and HealSmart_SpellCostDB then dbData = HealSmart_SpellCostDB[spellID] end
+    local isCasterGroupMember = (sourceGUID == playerGUID) or
+                                (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
+                                (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
+                                (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
+
+    if isCasterGroupMember and sourceName and spellName then
+        local spellID = select(12, CombatLogGetCurrentEventInfo())
+        local fullSpellName = spellName
             
-            local classFilename = dbData and dbData.class or SPELL_CLASS_CACHE[spellName]
-            
-            if classFilename and ALLOWED_CLASSES[classFilename] then
-                local cleanName = string.match(sourceName, "([^-]+)")
-                local healer = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanName, classFilename)
-                local cost = spellID and GetLiveSpellManaCost(spellID) or 0
-                if cost == 0 and dbData then cost = dbData.cost or 0 end
-                
-                if cost == 0 and spellName then
-                    if spellName == "Healing Wave" then cost = 25
-                    elseif spellName == "Lesser Healing Wave" then cost = 105
-                    elseif spellName == "Chain Heal" then cost = 260
-                    elseif spellName == "Flash Heal" or spellName == "Lesser Heal" or spellName == "Renew" then cost = 30
-                    elseif spellName == "Heal" then cost = 90
-                    elseif spellName == "Greater Heal" then cost = 370
-                    elseif spellName == "Prayer of Healing" then cost = 410
-                    elseif spellName == "Power Word: Shield" then cost = 45
-                    elseif spellName == "Healing Touch" or spellName == "Rejuvenation" or spellName == "Regrowth" then cost = 25
-                    elseif spellName == "Flash of Light" or spellName == "Holy Light" then cost = 35 end
-                end
-                
-                healer.manaUsed = healer.manaUsed + cost
-                
-                if HealSmartSettings and HealSmartSettings.overallData then
-                    local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanName, classFilename)
-                    overallHealer.manaUsed = overallHealer.manaUsed + cost
-                end
-                coreFrame.RefreshStats()
+        if spellID and C_Spell and C_Spell.GetSpellSubtext then
+            local rankText = C_Spell.GetSpellSubtext(spellID)
+            if rankText and rankText ~= "" then
+                fullSpellName = string.format("%s (%s)", spellName, rankText)
             end
         end
 
-    -- --- 2. DIRECT HEALS & HOTS (v0.8.0 - Rank-Separated & Parameter Secured) ---
-    elseif (eventType == "SPELL_HEAL" or eventType == "SPELL_PERIODIC_HEAL") and isSessionActive then
-        -- FIXED: Extract values safely using select to prevent variable shunting crashes
-        local spellID, spellName = select(12, CombatLogGetCurrentEventInfo())
-        local _, _, _, amount, overheal = select(12, CombatLogGetCurrentEventInfo())
-        
-        overheal = overheal or 0
-        amount = amount or 0
-        local effective = amount - overheal
-        if effective < 0 then effective = 0 end
+        if spellID and C_Spell and C_Spell.GetSpellPowerCost then
+            local costTable = C_Spell.GetSpellPowerCost(spellID)
+            local costInfo = costTable and costTable[1]
+            local actualCost = costInfo and costInfo.cost or 0
+            local isHealingSpell = SPELL_CLASS_CACHE[spellName] or (spellName == "Power Word: Shield")
 
-        local isGroupMember = (sourceGUID == playerGUID) or
-                              (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
-                              (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
-                              (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
-
-        if isGroupMember and sourceName then
-            local cleanName = string.match(sourceName, "([^-]+)")
-            local classFilename = groupRosterCache[cleanName] or SPELL_CLASS_CACHE[spellName]
-
-            if classFilename and ALLOWED_CLASSES[classFilename] then
-                local healer = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanName, classFilename)
-                healer.effective = healer.effective + effective
-                healer.overheal = healer.overheal + overheal
+            if actualCost > 0 and isHealingSpell then
+                local healer = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, healerClass)
                 
-                -- Dynamic Rank Compiler (e.g. "Flash Heal (Rank 4)")
-                local fullSpellName = spellName
+                -- FIXED: Now safely locked inside the healing-filter wall!
+                healer.manaUsed = (healer.manaUsed or 0) + actualCost
+
+                if not healer.spellMana then healer.spellMana = {} end
+                if not healer.spellMana[fullSpellName] then
+                    healer.spellMana[fullSpellName] = { manaUsed = 0, effective = 0 }
+                end
+                healer.spellMana[fullSpellName].manaUsed = healer.spellMana[fullSpellName].manaUsed + actualCost
+
+                if HealSmartSettings and HealSmartSettings.overallData then
+                    local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanSourceName, healerClass)
+                    
+                    -- FIXED: Overall master safely locked inside the healing-filter wall too!
+                    overallHealer.manaUsed = (overallHealer.manaUsed or 0) + actualCost
+
+                    if not overallHealer.spellMana then overallHealer.spellMana = {} end
+                    if not overallHealer.spellMana[fullSpellName] then
+                        overallHealer.spellMana[fullSpellName] = { manaUsed = 0, effective = 0 }
+                    end
+                    overallHealer.spellMana[fullSpellName].manaUsed = overallHealer.spellMana[fullSpellName].manaUsed + actualCost
+                end
+            end
+        end
+
+        -- Run buff watchlist check
+        if BUFF_WATCH_LIST[spellName] then
+            local healer = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, healerClass)
+            healer.buffs = (healer.buffs or 0) + 1
+            if not healer.spellBuffs then healer.spellBuffs = {} end
+            healer.spellBuffs[spellName] = (healer.spellBuffs[spellName] or 0) + 1
+
+            if HealSmartSettings and HealSmartSettings.overallData then
+                local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanSourceName, healerClass)
+                overallHealer.buffs = (overallHealer.buffs or 0) + 1
+                if not overallHealer.spellBuffs then overallHealer.spellBuffs = {} end
+                overallHealer.spellBuffs[spellName] = (overallHealer.spellBuffs[spellName] or 0) + 1
+            end
+        end
+        coreFrame.RefreshStats()
+    end
+end;
+
+-- STANDARD DAMAGE DONE & DAMAGE TAKEN MOTORS (v0.8.0 - Rank-Separated)
+local function OnEvent_DAMAGE(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags)
+    local amount
+
+    -- SWING_DAMAGE uses argument 12, while all SPELL and DoT variants use argument 15
+    if eventType == "SWING_DAMAGE" then
+        amount = select(12, CombatLogGetCurrentEventInfo())
+    else
+        amount = select(15, CombatLogGetCurrentEventInfo())
+    end
+        
+    amount = amount or 0
+
+    if amount > 0 then
+        -- A: DAMAGE DONE DETECTION (Who is dealing damage?)
+        local isSourceGroupMember = (sourceGUID == playerGUID) or
+                                    (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
+                                    (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
+                                    (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
+
+        if isSourceGroupMember and sourceName and not string.find(sourceGUID, "^Pet-") then
+            local cleanSourceName = string.match(sourceName, "([^-]+)")
+            local sourceClass = groupRosterCache[cleanSourceName] or "UNKNOWN"
+                
+            -- Fetch spell context and combine it dynamically with the Rank subtext
+            local spellID, spellName = select(12, CombatLogGetCurrentEventInfo())
+            local fullSpellName = spellName
+                
+            if eventType == "SWING_DAMAGE" then 
+                fullSpellName = "Melee" 
+            elseif spellID and spellName and C_Spell and C_Spell.GetSpellSubtext then
+                local rankText = C_Spell.GetSpellSubtext(spellID)
+                if rankText and rankText ~= "" then
+                    fullSpellName = string.format("%s (%s)", spellName, rankText)
+                end
+            end
+                
+            local profile = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, sourceClass)
+            profile.damageDone = profile.damageDone + amount
+                
+            if fullSpellName then
+                if not profile.spellDamage then profile.spellDamage = {} end
+                profile.spellDamage[fullSpellName] = (profile.spellDamage[fullSpellName] or 0) + amount
+            end
+                
+            if HealSmartSettings and HealSmartSettings.overallData then
+                local overallProfile = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanSourceName, sourceClass)
+                overallProfile.damageDone = overallProfile.damageDone + amount
+                    
+                if fullSpellName then
+                    if not overallProfile.spellDamage then overallProfile.spellDamage = {} end
+                    overallProfile.spellDamage[fullSpellName] = (overallProfile.spellDamage[fullSpellName] or 0) + amount
+                end
+            end
+            coreFrame.RefreshStats()
+        end
+
+        -- DAMAGE TAKEN DETECTION (Who is taking damage? - FIXED v0.8.0)
+        local isDestGroupMember = (destGUID == playerGUID) or
+                                    (bit.band(destFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
+                                    (bit.band(destFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
+                                    (bit.band(destFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
+
+        if isDestGroupMember and destName and not string.find(destGUID, "^Pet-") then
+            local cleanDestName = string.match(destName, "([^-]+)")
+            local destClass = groupRosterCache[cleanDestName] or "UNKNOWN"
+                
+            -- Extract the monster spell context safely based on the specific hit event type
+            local spellName = "Melee"
+            if eventType == "SPELL_DAMAGE" or eventType == "SPELL_PERIODIC_DAMAGE" or eventType == "RANGE_DAMAGE" then
+                _, spellName = select(12, CombatLogGetCurrentEventInfo())
+            end
+                
+            local cleanSourceName = sourceName and string.match(sourceName, "([^-]+)") or "Environment"
+            local combinedSourceKey = string.format("%s - %s", cleanSourceName, spellName or "Unknown")
+
+            -- v0.8.0: Detect Blizzard Damage School Bitmasks to determine text coloring
+            local schoolColor = "physical"
+            if eventType == "SPELL_DAMAGE" or eventType == "SPELL_PERIODIC_DAMAGE" or eventType == "RANGE_DAMAGE" then
+                local schoolBit = select(14, CombatLogGetCurrentEventInfo())
+                if schoolBit == 2 then schoolColor = "holy"
+                elseif schoolBit == 4 then schoolColor = "fire"
+                elseif schoolBit == 8 then schoolColor = "nature"
+                elseif schoolBit == 16 then schoolColor = "frost"
+                elseif schoolBit == 32 then schoolColor = "shadow"
+                elseif schoolBit == 64 then schoolColor = "arcane" end
+            end
+                
+            -- Manual override for Poison spells based on string context matching
+            if spellName and (string.find(string.lower(spellName), "poison") or string.find(string.lower(spellName), "toxin")) then
+                schoolColor = "poison"
+            end
+
+            local profile = HealSmart_GetOrCreateProfile(activeHealers, destGUID, cleanDestName, destClass)
+            profile.damageTaken = profile.damageTaken + amount
+
+            -- Secure multidimensional sub-table writing for current session matrix
+            if not profile.spellTaken then profile.spellTaken = {} end
+            if not profile.spellTaken[combinedSourceKey] then
+                profile.spellTaken[combinedSourceKey] = { amt = 0, color = schoolColor }
+            end
+            profile.spellTaken[combinedSourceKey].amt = profile.spellTaken[combinedSourceKey].amt + amount
+                
+            if HealSmartSettings and HealSmartSettings.overallData then
+                local overallProfile = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, destGUID, cleanDestName, destClass)
+                overallProfile.damageTaken = overallProfile.damageTaken + amount
+                    
+                if not overallProfile.spellTaken then overallProfile.spellTaken = {} end
+                if not overallProfile.spellTaken[combinedSourceKey] then
+                    overallProfile.spellTaken[combinedSourceKey] = { amt = 0, color = schoolColor }
+                end
+                overallProfile.spellTaken[combinedSourceKey].amt = overallProfile.spellTaken[combinedSourceKey].amt + amount
+            end
+            coreFrame.RefreshStats()
+        end
+	end;
+end;
+
+--  DIRECT HEALS & HOTS (v0.8.0 - Rank-Separated & Parameter Secured)
+local function OnEvent_HEAL(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags)
+    local spellID, spellName = select(12, CombatLogGetCurrentEventInfo())
+    local _, _, _, amount, overheal = select(12, CombatLogGetCurrentEventInfo())
+        
+    overheal = overheal or 0
+    amount = amount or 0
+    local effective = amount - overheal
+    if effective < 0 then effective = 0 end
+
+    local isGroupMember = (sourceGUID == playerGUID) or
+                            (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
+                            (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
+                            (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
+
+    if isGroupMember and sourceName then
+        local cleanName = string.match(sourceName, "([^-]+)")
+        local classFilename = groupRosterCache[cleanName] or SPELL_CLASS_CACHE[spellName]
+
+        if classFilename and ALLOWED_CLASSES[classFilename] then
+            local healer = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanName, classFilename)
+            healer.effective = healer.effective + effective
+            healer.overheal = healer.overheal + overheal
+                
+            -- Dynamic Rank Compiler (e.g. "Flash Heal (Rank 4)")
+            local fullSpellName = spellName
+            if spellID and spellName and C_Spell and C_Spell.GetSpellSubtext then
+                local rankText = C_Spell.GetSpellSubtext(spellID)
+                if rankText and rankText ~= "" then
+                    fullSpellName = string.format("%s (%s)", spellName, rankText)
+                end
+            end
+
+            if fullSpellName then
+                if not healer.spellHeals then healer.spellHeals = {} end
+                if not healer.spellHeals[fullSpellName] then 
+                    healer.spellHeals[fullSpellName] = { effective = 0, overheal = 0 } 
+                end
+                healer.spellHeals[fullSpellName].effective = healer.spellHeals[fullSpellName].effective + effective
+                healer.spellHeals[fullSpellName].overheal = healer.spellHeals[fullSpellName].overheal + overheal
+            end
+
+            if HealSmartSettings and HealSmartSettings.overallData then
+                local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanName, classFilename)
+                overallHealer.effective = overallHealer.effective + effective
+                overallHealer.overheal = overallHealer.overheal + overheal
+                    
+                if fullSpellName then
+                    if not overallHealer.spellHeals then overallHealer.spellHeals = {} end
+                    if not overallHealer.spellHeals[fullSpellName] then 
+                        overallHealer.spellHeals[fullSpellName] = { effective = 0, overheal = 0 } 
+                    end
+                    overallHealer.spellHeals[fullSpellName].effective = overallHealer.spellHeals[fullSpellName].effective + effective
+                    overallHealer.spellHeals[fullSpellName].overheal = overallHealer.spellHeals[fullSpellName].overheal + overheal
+                        
+                    -- Purely accumulate overall master effective yield safely
+                    if not overallHealer.spellMana then overallHealer.spellMana = {} end
+                    if not overallHealer.spellMana[fullSpellName] then
+                        overallHealer.spellMana[fullSpellName] = { manaUsed = 0, effective = 0 }
+                    end
+                    overallHealer.spellMana[fullSpellName].effective = overallHealer.spellMana[fullSpellName].effective + effective
+                end
+            end
+            coreFrame.RefreshStats()
+        end
+    end
+end;
+
+--  DETECT REFLECTED SHIELDS & THORNS (v0.8.0 - Factual Source Routing Locked)
+local function OnEvent_SHIELD(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags)
+    local _, _, _, sourceGUID, sourceName, sourceFlags, _, _, _, _ = CombatLogGetCurrentEventInfo()
+    local amount = select(15, CombatLogGetCurrentEventInfo()) or 0
+
+    if amount > 0 then
+        local isPlayerSelf = (sourceGUID == playerGUID)
+        local isSourceGroupMember = (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
+                                    (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
+                                    (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
+
+        if (isPlayerSelf or isSourceGroupMember) and sourceName then
+            local cleanSourceName = string.match(sourceName, "([^-]+)")
+                
+            local sourceClass = groupRosterCache[cleanSourceName]
+            if isPlayerSelf and not sourceClass then
+                _, sourceClass = UnitClass("player")
+            end
+                
+            sourceClass = sourceClass or "UNKNOWN"
+
+            if ALLOWED_CLASSES[sourceClass] then
+                -- NEW: Fetch the spellID and check for specific shield ranks dynamically
+                local spellID, spellName = select(12, CombatLogGetCurrentEventInfo())
+                local fullSpellName = spellName or "Damage Shield"
+                    
                 if spellID and spellName and C_Spell and C_Spell.GetSpellSubtext then
                     local rankText = C_Spell.GetSpellSubtext(spellID)
                     if rankText and rankText ~= "" then
                         fullSpellName = string.format("%s (%s)", spellName, rankText)
                     end
                 end
-
-                if fullSpellName then
-                    if not healer.spellHeals then healer.spellHeals = {} end
-                    if not healer.spellHeals[fullSpellName] then 
-                        healer.spellHeals[fullSpellName] = { effective = 0, overheal = 0 } 
-                    end
-                    healer.spellHeals[fullSpellName].effective = healer.spellHeals[fullSpellName].effective + effective
-                    healer.spellHeals[fullSpellName].overheal = healer.spellHeals[fullSpellName].overheal + overheal
                     
-                    -- NEW v0.8.0: Purely accumulate the effective healing yield safely
-                    if not healer.spellMana then healer.spellMana = {} end
-                    if not healer.spellMana[fullSpellName] then
-                        healer.spellMana[fullSpellName] = { manaUsed = 0, effective = 0 }
-                    end
-                    healer.spellMana[fullSpellName].effective = healer.spellMana[fullSpellName].effective + effective
-                end
-
-                if HealSmartSettings and HealSmartSettings.overallData then
-                    local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanName, classFilename)
-                    overallHealer.effective = overallHealer.effective + effective
-                    overallHealer.overheal = overallHealer.overheal + overheal
-                    
-                    if fullSpellName then
-                        if not overallHealer.spellHeals then overallHealer.spellHeals = {} end
-                        if not overallHealer.spellHeals[fullSpellName] then 
-                            overallHealer.spellHeals[fullSpellName] = { effective = 0, overheal = 0 } 
-                        end
-                        overallHealer.spellHeals[fullSpellName].effective = overallHealer.spellHeals[fullSpellName].effective + effective
-                        overallHealer.spellHeals[fullSpellName].overheal = overallHealer.spellHeals[fullSpellName].overheal + overheal
-                        
-                        -- Purely accumulate overall master effective yield safely
-                        if not overallHealer.spellMana then overallHealer.spellMana = {} end
-                        if not overallHealer.spellMana[fullSpellName] then
-                            overallHealer.spellMana[fullSpellName] = { manaUsed = 0, effective = 0 }
-                        end
-                        overallHealer.spellMana[fullSpellName].effective = overallHealer.spellMana[fullSpellName].effective + effective
-                    end
-                end
-                coreFrame.RefreshStats()
-            end
-        end
-
-    -- --- B: SHIELDS & ABSORBS ---
-    elseif eventType == "SPELL_ABSORBED" then
-        local allArgs = { CombatLogGetCurrentEventInfo() }
-        local shieldCasterGUID, shieldCasterName, shieldCasterFlags, shieldAbsorbAmount, absorbSpellName
-        
-        local numArgs = #allArgs
-        if numArgs >= 19 then
-            absorbSpellName = allArgs[numArgs - 2]
-            shieldCasterGUID = allArgs[numArgs - 7]
-            shieldCasterName = allArgs[numArgs - 6]
-            shieldCasterFlags = allArgs[numArgs - 5]
-            shieldAbsorbAmount = allArgs[numArgs]
-        end
-
-        if absorbSpellName == "Power Word: Shield" and shieldCasterGUID and shieldAbsorbAmount and shieldCasterGUID ~= "" and shieldCasterName then
-            local isGroupMember = (shieldCasterGUID == playerGUID) or
-                                  (bit.band(shieldCasterFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
-                                  (bit.band(shieldCasterFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
-                                  (bit.band(shieldCasterFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
-
-            if isGroupMember then
-                local cleanName = string.match(shieldCasterName, "([^-]+)")
-                local healer = HealSmart_GetOrCreateProfile(activeHealers, shieldCasterGUID, cleanName, "PRIEST")
-                healer.effective = healer.effective + shieldAbsorbAmount
-                
-                -- NEW v0.8.0: Aggregate Shield absorption abilities dynamically in current session
-                if not healer.spellHeals then healer.spellHeals = {} end
-                if not healer.spellHeals[absorbSpellName] then 
-                    healer.spellHeals[absorbSpellName] = { effective = 0, overheal = 0 } 
-                end
-                healer.spellHeals[absorbSpellName].effective = healer.spellHeals[absorbSpellName].effective + shieldAbsorbAmount
-
-                if HealSmartSettings and HealSmartSettings.overallData then
-                    local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, shieldCasterGUID, cleanName, "PRIEST")
-                    overallHealer.effective = overallHealer.effective + shieldAbsorbAmount
-                    
-                    -- Also aggregate into the overall night master totals safely
-                    if not overallHealer.spellHeals then overallHealer.spellHeals = {} end
-                    if not overallHealer.spellHeals[absorbSpellName] then 
-                        overallHealer.spellHeals[absorbSpellName] = { effective = 0, overheal = 0 } 
-                    end
-                    overallHealer.spellHeals[absorbSpellName].effective = overallHealer.spellHeals[absorbSpellName].effective + shieldAbsorbAmount
-                end
-                coreFrame.RefreshStats()
-            end
-        end
-
-    -- --- 8A. DETECT REFLECTED SHIELDS & THORNS (v0.8.0 - Factual Source Routing Locked) ---
-    elseif isSessionActive and eventType == "DAMAGE_SHIELD" then
-        local _, _, _, sourceGUID, sourceName, sourceFlags, _, _, _, _ = CombatLogGetCurrentEventInfo()
-        local amount = select(15, CombatLogGetCurrentEventInfo()) or 0
-
-        if amount > 0 then
-            local isPlayerSelf = (sourceGUID == playerGUID)
-            local isSourceGroupMember = (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
-                                        (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
-                                        (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
-
-            if (isPlayerSelf or isSourceGroupMember) and sourceName then
-                local cleanSourceName = string.match(sourceName, "([^-]+)")
-                
-                local sourceClass = groupRosterCache[cleanSourceName]
-                if isPlayerSelf and not sourceClass then
-                    _, sourceClass = UnitClass("player")
-                end
-                
-                sourceClass = sourceClass or "UNKNOWN"
-
-                if ALLOWED_CLASSES[sourceClass] then
-                    -- NEW: Fetch the spellID and check for specific shield ranks dynamically
-                    local spellID, spellName = select(12, CombatLogGetCurrentEventInfo())
-                    local fullSpellName = spellName or "Damage Shield"
-                    
-                    if spellID and spellName and C_Spell and C_Spell.GetSpellSubtext then
-                        local rankText = C_Spell.GetSpellSubtext(spellID)
-                        if rankText and rankText ~= "" then
-                            fullSpellName = string.format("%s (%s)", spellName, rankText)
-                        end
-                    end
-                    
-                    local profile = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, sourceClass)
-                    profile.damageDone = profile.damageDone + amount
-                    
-                    if fullSpellName then
-                        if not profile.spellDamage then profile.spellDamage = {} end
-                        profile.spellDamage[fullSpellName] = (profile.spellDamage[fullSpellName] or 0) + amount
-                    end
-                    
-                    if HealSmartSettings and HealSmartSettings.overallData then
-                        local overallProfile = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanSourceName, sourceClass)
-                        overallProfile.damageDone = overallProfile.damageDone + amount
-                        
-                        if fullSpellName then
-                            if not overallProfile.spellDamage then overallProfile.spellDamage = {} end
-                            overallProfile.spellDamage[fullSpellName] = (overallProfile.spellDamage[fullSpellName] or 0) + amount
-                        end
-                    end
-                    coreFrame.RefreshStats()
-                end
-            end
-        end
-
-    -- --- 8B. STANDARD DAMAGE DONE & DAMAGE TAKEN MOTORS (v0.8.0 - Rank-Separated) ---
-    elseif isSessionActive and (eventType == "SWING_DAMAGE" or eventType == "SPELL_DAMAGE" or eventType == "RANGE_DAMAGE" or eventType == "SPELL_PERIODIC_DAMAGE") then
-        local amount
-        -- SWING_DAMAGE uses argument 12, while all SPELL and DoT variants use argument 15
-        if eventType == "SWING_DAMAGE" then
-            amount = select(12, CombatLogGetCurrentEventInfo())
-        else
-            amount = select(15, CombatLogGetCurrentEventInfo())
-        end
-        
-        amount = amount or 0
-
-        if amount > 0 then
-            -- A: DAMAGE DONE DETECTION (Who is dealing damage?)
-            local isSourceGroupMember = (sourceGUID == playerGUID) or
-                                        (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
-                                        (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
-                                        (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
-
-            if isSourceGroupMember and sourceName and not string.find(sourceGUID, "^Pet-") then
-                local cleanSourceName = string.match(sourceName, "([^-]+)")
-                local sourceClass = groupRosterCache[cleanSourceName] or "UNKNOWN"
-                
-                -- NEW: Fetch spell context and combine it dynamically with the Rank subtext
-                local spellID, spellName = select(12, CombatLogGetCurrentEventInfo())
-                local fullSpellName = spellName
-                
-                if eventType == "SWING_DAMAGE" then 
-                    fullSpellName = "Melee" 
-                elseif spellID and spellName and C_Spell and C_Spell.GetSpellSubtext then
-                    local rankText = C_Spell.GetSpellSubtext(spellID)
-                    if rankText and rankText ~= "" then
-                        fullSpellName = string.format("%s (%s)", spellName, rankText)
-                    end
-                end
-                
                 local profile = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, sourceClass)
                 profile.damageDone = profile.damageDone + amount
-                
+                    
                 if fullSpellName then
                     if not profile.spellDamage then profile.spellDamage = {} end
                     profile.spellDamage[fullSpellName] = (profile.spellDamage[fullSpellName] or 0) + amount
                 end
-                
+                    
                 if HealSmartSettings and HealSmartSettings.overallData then
                     local overallProfile = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanSourceName, sourceClass)
                     overallProfile.damageDone = overallProfile.damageDone + amount
-                    
+                        
                     if fullSpellName then
                         if not overallProfile.spellDamage then overallProfile.spellDamage = {} end
                         overallProfile.spellDamage[fullSpellName] = (overallProfile.spellDamage[fullSpellName] or 0) + amount
@@ -625,214 +662,167 @@ local function OnCombatLogEvent()
                 end
                 coreFrame.RefreshStats()
             end
-
-            -- B: DAMAGE TAKEN DETECTION (Who is taking damage? - FIXED v0.8.0)
-            local isDestGroupMember = (destGUID == playerGUID) or
-                                      (bit.band(destFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
-                                      (bit.band(destFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
-                                      (bit.band(destFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
-
-            if isDestGroupMember and destName and not string.find(destGUID, "^Pet-") then
-                local cleanDestName = string.match(destName, "([^-]+)")
-                local destClass = groupRosterCache[cleanDestName] or "UNKNOWN"
-                
-                -- FIXED: Extract the monster spell context safely based on the specific hit event type
-                local spellName = "Melee"
-                if eventType == "SPELL_DAMAGE" or eventType == "SPELL_PERIODIC_DAMAGE" or eventType == "RANGE_DAMAGE" then
-                    -- Spell name is safely positioned as argument 13 in the combat log pipeline
-                    _, spellName = select(12, CombatLogGetCurrentEventInfo())
-                end
-                
-                local cleanSourceName = sourceName and string.match(sourceName, "([^-]+)") or "Environment"
-                local combinedSourceKey = string.format("%s - %s", cleanSourceName, spellName or "Unknown")
-
-                -- NEW v0.8.0: Detect Blizzard Damage School Bitmasks to determine text coloring
-                local schoolColor = "physical"
-                if eventType == "SPELL_DAMAGE" or eventType == "SPELL_PERIODIC_DAMAGE" or eventType == "RANGE_DAMAGE" then
-                    local schoolBit = select(14, CombatLogGetCurrentEventInfo())
-                    if schoolBit == 4 then schoolColor = "fire"
-                    elseif schoolBit == 8 then schoolColor = "nature"
-                    elseif schoolBit == 32 then schoolColor = "shadow" end
-                end
-                
-                -- Manual override for Poison spells based on string context matching
-                if spellName and (string.find(string.lower(spellName), "poison") or string.find(string.lower(spellName), "toxin")) then
-                    schoolColor = "poison"
-                end
-
-                local profile = HealSmart_GetOrCreateProfile(activeHealers, destGUID, cleanDestName, destClass)
-                profile.damageTaken = profile.damageTaken + amount
-                
-                -- Secure multidimensional sub-table writing for current session matrix
-                if not profile.spellTaken then profile.spellTaken = {} end
-                if not profile.spellTaken[combinedSourceKey] then
-                    profile.spellTaken[combinedSourceKey] = { amt = 0, color = schoolColor }
-                end
-                profile.spellTaken[combinedSourceKey].amt = profile.spellTaken[combinedSourceKey].amt + amount
-                
-                if HealSmartSettings and HealSmartSettings.overallData then
-                    local overallProfile = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, destGUID, cleanDestName, destClass)
-                    overallProfile.damageTaken = overallProfile.damageTaken + amount
-                    
-                    if not overallProfile.spellTaken then overallProfile.spellTaken = {} end
-                    if not overallProfile.spellTaken[combinedSourceKey] then
-                        overallProfile.spellTaken[combinedSourceKey] = { amt = 0, color = schoolColor }
-                    end
-                    overallProfile.spellTaken[combinedSourceKey].amt = overallProfile.spellTaken[combinedSourceKey].amt + amount
-                end
-                coreFrame.RefreshStats()
-            end
         end
+    end
+end;
 
-    -- ==========================================
-    -- HealSmart - Core Engine (v0.7.0) - PART 3A (Combat Log Parser - Part 2)
-    -- ==========================================
+--  SHIELDS & ABSORBS
+local function OnEvent_ABSORBED(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags)
+    local allArgs = { CombatLogGetCurrentEventInfo() }
+    local shieldCasterGUID, shieldCasterName, shieldCasterFlags, shieldAbsorbAmount, absorbSpellName
+        
+    local numArgs = #allArgs
+    if numArgs >= 19 then
+        absorbSpellName = allArgs[numArgs - 2]
+        shieldCasterGUID = allArgs[numArgs - 7]
+        shieldCasterName = allArgs[numArgs - 6]
+        shieldCasterFlags = allArgs[numArgs - 5]
+        shieldAbsorbAmount = allArgs[numArgs]
+    end
 
-    -- --- 4. RAID DEATH WATCH ENGINE (Runs out-of-combat!) ---
-    elseif eventType == "UNIT_DIED" then
-        local isTargetGroupMember = (bit.band(destFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
-                                    (bit.band(destFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
-                                    (bit.band(destFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
+    if absorbSpellName == "Power Word: Shield" and shieldCasterGUID and shieldAbsorbAmount and shieldCasterGUID ~= "" and shieldCasterName then
+        local isGroupMember = (shieldCasterGUID == playerGUID) or
+                                (bit.band(shieldCasterFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
+                                (bit.band(shieldCasterFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
+                                (bit.band(shieldCasterFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
 
-        -- Ensure we only track player deaths inside our own raid group, excluding pets and monsters
-        if isTargetGroupMember and destName and not string.find(destGUID, "^Pet-") then
-            local cleanDestName = string.match(destName, "([^-]+)")
-            local healerClass = groupRosterCache[cleanDestName]
-            
-            if healerClass and ALLOWED_CLASSES[healerClass] then
-                -- Add points to the person who died inside the current session array
-                local healer = HealSmart_GetOrCreateProfile(activeHealers, destGUID, cleanDestName, healerClass)
-                healer.deaths = healer.deaths + 1
+        if isGroupMember then
+            local cleanName = string.match(shieldCasterName, "([^-]+)")
+            local healer = HealSmart_GetOrCreateProfile(activeHealers, shieldCasterGUID, cleanName, "PRIEST")
+            healer.effective = healer.effective + shieldAbsorbAmount
                 
-                -- Accumulate cumulatively inside the master Overall database sheet
-                if HealSmartSettings and HealSmartSettings.overallData then
-                    local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, destGUID, cleanDestName, healerClass)
-                    overallHealer.deaths = overallHealer.deaths + 1
-                end
-                coreFrame.RefreshStats()
+            -- NEW v0.8.0: Aggregate Shield absorption abilities dynamically in current session
+            if not healer.spellHeals then healer.spellHeals = {} end
+            if not healer.spellHeals[absorbSpellName] then 
+                healer.spellHeals[absorbSpellName] = { effective = 0, overheal = 0 } 
             end
-        end
-
-    -- --- 5. DISPEL TRACKING ENGINE (Runs out-of-combat!) ---
-    elseif eventType == "SPELL_DISPEL" then
-        local isCasterGroupMember = (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
-                                    (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
-                                    (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
-
-        if isCasterGroupMember and sourceName then
-            local cleanSourceName = string.match(sourceName, "([^-]+)")
-            local healerClass = groupRosterCache[cleanSourceName] or "UNKNOWN"
-            
-            if healerClass and ALLOWED_CLASSES[healerClass] then
-                local healer = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, healerClass)
-                healer.dispels = healer.dispels + 1
-                
-                if HealSmartSettings and HealSmartSettings.overallData then
-                    local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanSourceName, healerClass)
-                    overallHealer.dispels = overallHealer.dispels + 1
-                end
-                coreFrame.RefreshStats()
-            end
-        end
-
-    -- --- 6. RESURRECTION TRACKING ENGINE (Runs out-of-combat!) ---
-    elseif eventType == "SPELL_RESURRECT" then
-        local isCasterGroupMember = (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
-                                    (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
-                                    (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
-
-        if isCasterGroupMember and sourceName then
-            local cleanSourceName = string.match(sourceName, "([^-]+)")
-            local healerClass = groupRosterCache[cleanSourceName] or "UNKNOWN"
-            
-            if healerClass and ALLOWED_CLASSES[healerClass] then
-                local healer = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, healerClass)
-                healer.resurrects = healer.resurrects + 1
-                
-                if HealSmartSettings and HealSmartSettings.overallData then
-                    local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanSourceName, healerClass)
-                    overallHealer.resurrects = overallHealer.resurrects + 1
-                end
-                coreFrame.RefreshStats()
-            end
-        end
-
-    -- =========================================================================
-    -- --- 7. RAID BUFF TRACKING ENGINE (Runs 24/7 out-of-combat! - FIXED) ---
-    -- =========================================================================
-    elseif eventType == "SPELL_CAST_SUCCESS" then
-        local _, _, _, sourceGUID, sourceName, sourceFlags, _, _, _, _ = CombatLogGetCurrentEventInfo()
-        local _, spellName = select(12, CombatLogGetCurrentEventInfo())                
-        local cleanSourceName = sourceName and string.match(sourceName, "([^-]+)") or "Unknown"
-        local healerClass = groupRosterCache[cleanSourceName]
-
-        if sourceGUID == playerGUID and not healerClass then _, healerClass = UnitClass("player") end
-        healerClass = healerClass or "UNKNOWN"
-
-        local isCasterGroupMember = (sourceGUID == playerGUID) or
-                                    (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
-                                    (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
-                                    (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
-
-        -- NEW v0.8.0 MANA HOOK: Runs for all valid group casters instantly upon click
-        if isCasterGroupMember and sourceName and spellName then
-            local spellID = select(12, CombatLogGetCurrentEventInfo())
-            local fullSpellName = spellName
-            
-            -- Compile the precise Rank name context safely
-            if spellID and C_Spell and C_Spell.GetSpellSubtext then
-                local rankText = C_Spell.GetSpellSubtext(spellID)
-                if rankText and rankText ~= "" then
-                    fullSpellName = string.format("%s (%s)", spellName, rankText)
-                end
-            end
-
-            -- FIXED: Extract the first resource index layout from Blizzard's multi-table return safely
-            if spellID and C_Spell and C_Spell.GetSpellPowerCost then
-                local costTable = C_Spell.GetSpellPowerCost(spellID)
-                local costInfo = costTable and costTable[1] -- Fetch the primary resource array slot
-                local actualCost = costInfo and costInfo.cost or 0
-                
-                print("actualCost: "..(actualCost or "nil"));
-
-                if actualCost > 0 then
-                    local healer = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, healerClass)
-                    if not healer.spellMana then healer.spellMana = {} end
-                    if not healer.spellMana[fullSpellName] then
-                        healer.spellMana[fullSpellName] = { manaUsed = 0, effective = 0 }
-                    end
-                    healer.spellMana[fullSpellName].manaUsed = healer.spellMana[fullSpellName].manaUsed + actualCost
-
-                    if HealSmartSettings and HealSmartSettings.overallData then
-                        local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanSourceName, healerClass)
-                        if not overallHealer.spellMana then overallHealer.spellMana = {} end
-                        if not overallHealer.spellMana[fullSpellName] then
-                            overallHealer.spellMana[fullSpellName] = { manaUsed = 0, effective = 0 }
-                        end
-                        overallHealer.spellMana[fullSpellName].manaUsed = overallHealer.spellMana[fullSpellName].manaUsed + actualCost
-                    end
-                end
-            end
-        end
-
-        if isCasterGroupMember and sourceName and spellName and BUFF_WATCH_LIST[spellName] then
-            local healer = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, healerClass)
-            healer.buffs = (healer.buffs or 0) + 1
-            
-            if not healer.spellBuffs then healer.spellBuffs = {} end
-            healer.spellBuffs[spellName] = (healer.spellBuffs[spellName] or 0) + 1
+            healer.spellHeals[absorbSpellName].effective = healer.spellHeals[absorbSpellName].effective + shieldAbsorbAmount
 
             if HealSmartSettings and HealSmartSettings.overallData then
-                local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanSourceName, healerClass)
-                overallHealer.buffs = (overallHealer.buffs or 0) + 1
-                
-                if not overallHealer.spellBuffs then overallHealer.spellBuffs = {} end
-                overallHealer.spellBuffs[spellName] = (overallHealer.spellBuffs[spellName] or 0) + 1
+                local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, shieldCasterGUID, cleanName, "PRIEST")
+                overallHealer.effective = overallHealer.effective + shieldAbsorbAmount
+                    
+                -- Also aggregate into the overall night master totals safely
+                if not overallHealer.spellHeals then overallHealer.spellHeals = {} end
+                if not overallHealer.spellHeals[absorbSpellName] then 
+                    overallHealer.spellHeals[absorbSpellName] = { effective = 0, overheal = 0 } 
+                end
+                overallHealer.spellHeals[absorbSpellName].effective = overallHealer.spellHeals[absorbSpellName].effective + shieldAbsorbAmount
             end
             coreFrame.RefreshStats()
         end
     end
+end;
+
+--  RAID DEATH WATCH ENGINE (Runs out-of-combat!)
+local function OnEvent_UNIT_DIED(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags)
+
+    local isTargetGroupMember = (bit.band(destFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
+                                (bit.band(destFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
+                                (bit.band(destFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
+
+    -- Ensure we only track player deaths inside our own raid group, excluding pets and monsters
+    if isTargetGroupMember and destName and not string.find(destGUID, "^Pet-") then
+        local cleanDestName = string.match(destName, "([^-]+)")
+        local healerClass = groupRosterCache[cleanDestName]
+            
+        if healerClass and ALLOWED_CLASSES[healerClass] then
+            -- Add points to the person who died inside the current session array
+            local healer = HealSmart_GetOrCreateProfile(activeHealers, destGUID, cleanDestName, healerClass)
+            healer.deaths = healer.deaths + 1
+                
+            -- Accumulate cumulatively inside the master Overall database sheet
+            if HealSmartSettings and HealSmartSettings.overallData then
+                local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, destGUID, cleanDestName, healerClass)
+                overallHealer.deaths = overallHealer.deaths + 1
+            end
+            coreFrame.RefreshStats()
+        end
+    end
+end;
+
+--  DISPEL TRACKING ENGINE (Runs out-of-combat!)
+local function OnEvent_DISPELL(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags)
+    local isCasterGroupMember = (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
+                                (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
+                                (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
+
+    if isCasterGroupMember and sourceName then
+        local cleanSourceName = string.match(sourceName, "([^-]+)")
+        local healerClass = groupRosterCache[cleanSourceName] or "UNKNOWN"
+            
+        if healerClass and ALLOWED_CLASSES[healerClass] then
+            local healer = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, healerClass)
+            healer.dispels = healer.dispels + 1
+                
+            if HealSmartSettings and HealSmartSettings.overallData then
+                local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanSourceName, healerClass)
+                overallHealer.dispels = overallHealer.dispels + 1
+            end
+            coreFrame.RefreshStats()
+        end
+    end
+end;
+
+--  RESURRECTION TRACKING ENGINE (Runs out-of-combat!)
+local function OnEvent_RESURRECT(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags)
+    local isCasterGroupMember = (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
+                                (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
+                                (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_RAID) ~= 0)
+
+    if isCasterGroupMember and sourceName then
+        local cleanSourceName = string.match(sourceName, "([^-]+)")
+        local healerClass = groupRosterCache[cleanSourceName] or "UNKNOWN"
+            
+        if healerClass and ALLOWED_CLASSES[healerClass] then
+            local healer = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, healerClass)
+            healer.resurrects = healer.resurrects + 1
+                
+            if HealSmartSettings and HealSmartSettings.overallData then
+                local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanSourceName, healerClass)
+                overallHealer.resurrects = overallHealer.resurrects + 1
+            end
+            coreFrame.RefreshStats()
+        end
+    end
+end;
+
+local function OnCombatLogEvent()
+    -- Fetch the active writing sub-table for the current active fight session
+    activeHealers = HealSmart_GetActiveSessionHealers()
+    if not activeHealers then return end
+
+    local timestamp, eventType, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags = CombatLogGetCurrentEventInfo()
+
+    if eventType == "SPELL_CAST_SUCCESS" then
+	    OnEvent_SPELL_CAST_SUCCESS(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags);
+
+	elseif eventType == "UNIT_DIED" then
+        OnEvent_UNIT_DIED(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags);
+
+    elseif eventType == "SPELL_DISPEL" then
+        OnEvent_DISPELL(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags);
+	
+    elseif eventType == "SPELL_RESURRECT" then
+        OnEvent_RESURRECT(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags);
+	
+	--  The next events only applies in combat, so bail out if not:
+	elseif isSessionActive then
+        if (eventType == "SWING_DAMAGE" or eventType == "SPELL_DAMAGE" or eventType == "RANGE_DAMAGE" or eventType == "SPELL_PERIODIC_DAMAGE") then
+            OnEvent_DAMAGE(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags);
+
+        elseif (eventType == "SPELL_HEAL" or eventType == "SPELL_PERIODIC_HEAL") then
+            OnEvent_HEAL(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags);
+
+        elseif eventType == "DAMAGE_SHIELD" then
+            OnEvent_SHIELD(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags);
+		
+        elseif eventType == "SPELL_ABSORBED" then
+            OnEvent_ABSORBED(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags);		
+        end; 
+    end;
 end
+
 
 -- ==========================================
 -- HealSmart - Core Engine (v0.6.0) - PART 3B
