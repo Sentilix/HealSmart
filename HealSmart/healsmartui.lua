@@ -186,7 +186,7 @@ resetButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
 local shoutButton = CreateFrame("Button", nil, header)
 shoutButton:SetSize(10, 10)
 shoutButton:SetPoint("RIGHT", resetButton, "LEFT", -4, 0) -- Fixed to 0y for straight alignment
-shoutButton:SetNormalTexture("Interface\\Icons\\Ability_Warrior_BattleShout")
+shoutButton:SetNormalTexture("Interface\\Icons\\ui_chat")
 
 if shoutButton:GetNormalTexture() then
     shoutButton:GetNormalTexture():SetAllPoints(shoutButton)
@@ -232,7 +232,7 @@ shoutButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
 sessionButton = CreateFrame("Button", nil, header)
 sessionButton:SetSize(10, 10)
 sessionButton:SetPoint("RIGHT", shoutButton, "LEFT", -4, 0) -- Back to 0y as it flushes with another square
-sessionButton:SetNormalTexture("Interface\\Icons\\INV_Misc_Note_02")
+sessionButton:SetNormalTexture("Interface\\Icons\\INV_Misc_Note_03")
 if sessionButton:GetNormalTexture() then sessionButton:GetNormalTexture():SetAllPoints(sessionButton) end
 sessionButton:SetScript("OnClick", function()
     if HealSmart_ToggleSessionWindow then HealSmart_ToggleSessionWindow() end
