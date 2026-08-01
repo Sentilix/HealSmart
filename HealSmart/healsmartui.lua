@@ -182,7 +182,6 @@ resetButton:SetScript("OnEnter", function(self)
 end)
 resetButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
--- NEW: Graphical Shout/Report Button (Sized to 10x10 with dynamic tooltip overlay engine)
 local shoutButton = CreateFrame("Button", nil, header)
 shoutButton:SetSize(10, 10)
 shoutButton:SetPoint("RIGHT", resetButton, "LEFT", -4, 0) -- Fixed to 0y for straight alignment
@@ -479,10 +478,10 @@ function HealSmart_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
         end
         
         bar.statusBar:SetValue(fillValue)
-        bar.leftText:SetText(data.name)
+        bar.leftText:SetText(string.format("%d. %s", i, data.name))
         
-        -- DYNAMIC PER-SECOND CALCULATIONS FOR HPS, DPS AND DTPS (v0.8.0)
-        local fightSeconds = HealSmart_CurrentFightDuration or 0
+        -- FIXED v0.9.0: Always relies on the calibrated historical session time or active duration
+        local fightSeconds = HealSmart_CurrentFightDuration_RenderOverride or HealSmart_CurrentFightDuration or 1
         if fightSeconds < 1 then fightSeconds = 1 end
 
         -- FIXED v0.8.0: Cleanly relies on your incoming argument token, destroying the legacy array dependency!
@@ -498,7 +497,7 @@ function HealSmart_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
             bar.rightText:SetText(string.format("%s (%.0f HPS) - %.1f%%", formattedAmt, hps, raidSharePercent))
             
         elseif viewType == "OVERHEALING" then
-            bar.rightText:SetText(string.format("%.1f%% Overheal", data.percent or 0))
+            bar.rightText:SetText(string.format("%.1f%% Efficiency", data.percent or 0))
             
         elseif viewType == "MANA_EFF" then
             bar.rightText:SetText(string.format("%.1f HPM", data.hpm or 0))
@@ -530,21 +529,33 @@ function HealSmart_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
             bar.rightText:SetText(string.format("%d Resses", data.resurrects or 0))
         end
 
-        -- NEW v0.8.0: Fully Data-Driven Text Routed Tooltip Engine (Safeguarded for index)
+        -- NEW v0.9.0: Fully Data-Driven Text Routed Tooltip Engine (Server-Grafting Secured)
         bar:SetScript("OnEnter", function(self)
             local pageRecord = HealSmart_GetPageRecord(HealSmart_CurrentActivePage)
-            local pageName = pageRecord.name
+            local pageName = pageRecord and pageRecord.name
             if pageName == "FRONTPAGE" then return end
 
-            local fullServerName = GetUnitName(data.unitId or "player", true) or data.name
+            -- Fetch the profile name and the current active server name safely
+            local rawName = data.name or "Unknown"
+            local currentRealm = GetRealmName() or ""
+            local fullServerName = rawName
+
+            -- SERVER-GRAFTING: If Blizzard clipped the realm name off, we graft it on manually
+            if not string.find(rawName, "-") and currentRealm ~= "" then
+                fullServerName = rawName .. "-" .. currentRealm
+            end
 
             GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
             GameTooltip:ClearLines()           
-            GameTooltip:AddLine(fullServerName, 1, 1, 1)
+            
+            -- Fetch the class colors from the game engine safely
+            local classColor = RAID_CLASS_COLORS[data.class] or { r = 0.5, g = 0.5, b = 0.5 }
+            
+            -- FIXED v0.9.0: Beautiful class-colored header with your guaranteed server name!
+            GameTooltip:AddLine(fullServerName, classColor.r, classColor.g, classColor.b)
             GameTooltip:AddLine(" ")
-
                         
-            local fightSeconds = HealSmart_CurrentFightDuration or 0
+            local fightSeconds = HealSmart_CurrentFightDuration_RenderOverride or HealSmart_CurrentFightDuration or 1
             if fightSeconds < 1 then fightSeconds = 1 end
 
             if pageName == "HEALING" or pageName == "OVERHEALING" then

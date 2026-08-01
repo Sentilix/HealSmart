@@ -1,5 +1,5 @@
 ## Title: HeroStats, formerly known as HealSmart
-## Version: 0.8.0
+## Version: 0.9.0
 ## Author: mimma @ EU-pyrewood village
 ## Interface: 11509
 ## SavedVariablesPerCharacter: HealSmartSettings

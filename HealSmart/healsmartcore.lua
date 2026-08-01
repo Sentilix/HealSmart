@@ -29,6 +29,50 @@ local SPELL_CLASS_CACHE = {
 }
 
 local coreFrame = CreateFrame("Frame")
+local timerFrame = CreateFrame("Frame")
+local fightStartTime = 0
+
+timerFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+timerFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+timerFrame:SetScript("OnEvent", function(self, event)
+    if event == "PLAYER_REGEN_DISABLED" then
+        -- RESET AND START: Combat has initiated
+        fightStartTime = GetTime()
+        HealSmart_CurrentFightDuration = 0
+        
+        -- Start an independent on-update ticker to count seconds live
+        self:SetScript("OnUpdate", function()
+            if fightStartTime > 0 then
+                HealSmart_CurrentFightDuration = GetTime() - fightStartTime
+            end
+        end)
+        
+    elseif event == "PLAYER_REGEN_ENABLED" then
+        self:SetScript("OnUpdate", nil)
+        
+        if fightStartTime > 0 then
+            HealSmart_CurrentFightDuration = GetTime() - fightStartTime
+            
+            -- STAMP THE DURATION: Lock the precise seconds directly onto the active session data
+            if HealSmartSettings and HealSmartSettings.sessions then
+                local targetIdx = HealSmartSettings.activeSessionIndex or #HealSmartSettings.sessions
+                local currentSession = HealSmartSettings.sessions[targetIdx]
+                if currentSession then
+                    -- Save the fight duration cleanly inside this specific session container
+                    currentSession.fightDuration = HealSmart_CurrentFightDuration
+                end
+            end
+            
+            -- Accumulate the total database time onto your Overall/Total data tracking layer
+            if HealSmartSettings and HealSmartSettings.overallData then
+                if not HealSmartSettings.overallData.totalTime then HealSmartSettings.overallData.totalTime = 0 end
+                HealSmartSettings.overallData.totalTime = HealSmartSettings.overallData.totalTime + HealSmart_CurrentFightDuration
+            end
+        end
+        fightStartTime = 0
+        if coreFrame.RefreshStats then coreFrame.RefreshStats() end
+    end
+end)
 
 -- Multi-Session Profile Factory: Securely fetches or creates data rows within any sub-table target
 function HealSmart_GetOrCreateProfile(dataTable, guid, name, classToken)
@@ -198,6 +242,36 @@ function coreFrame.RefreshStats()
         end
     end
 
+    -- NEW v0.9.0: Dynamic Historical Time Calibration Pipeline
+    local activeFightSeconds = HealSmart_CurrentFightDuration or 0 -- Default fallback
+    
+    if activeViewID == -1 then
+        -- If viewing Overall Total, pull the full accumulated historical time
+        activeFightSeconds = HealSmartSettings and HealSmartSettings.overallData and HealSmartSettings.overallData.totalTime or 0
+    else
+        if HealSmartSettings and HealSmartSettings.sessions then
+            local targetIdx = HealSmartSettings.activeSessionIndex or 1
+            if activeViewID > 0 then
+                for idx, session in ipairs(HealSmartSettings.sessions) do
+                    if session.id == activeViewID then
+                        targetIdx = idx
+                        break
+                    end
+                end
+            end
+            local sessionData = HealSmartSettings.sessions[targetIdx]
+            -- Pull the frozen historical seconds directly from this specific archived fight!
+            activeFightSeconds = sessionData and sessionData.fightDuration or activeFightSeconds
+        end
+    end
+    
+    -- Safeguard to prevent division by zero or negative integers
+    if activeFightSeconds < 1 then activeFightSeconds = 1 end
+    
+    -- Now export this local calibrated time out so your UI function can see it perfectly
+    -- (We simply overwrite the global variable for this specific render tick frame)
+    HealSmart_CurrentFightDuration_RenderOverride = activeFightSeconds
+
     if dataSourceTable then
         for guid, data in pairs(dataSourceTable) do
             -- Dynamically disable class locks on damage pages using text tokens!
@@ -287,11 +361,8 @@ function coreFrame.RefreshStats()
         if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topHealerAmount, "HEALING", totalRaidEffective, viewTitle) end
         
     elseif pageName == "OVERHEALING" then
-        table.sort(sortedHealers, function(a, b) return (a.overheal == b.overheal) and (a.name < b.name) or (a.overheal > b.overheal) end)
-        -- Overheal tracks maximum thresholds directly based on your data-percent or maxVal layers
-        local topOverhealAmt = 0
-        for _, data in ipairs(sortedHealers) do if (data.overheal or 0) > topOverhealAmt then topOverhealAmt = data.overheal end end
-        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topOverhealAmt, "OVERHEALING", 0, viewTitle) end
+        table.sort(sortedHealers, function(a, b) return (a.percent == b.percent) and (a.name < b.name) or (a.percent > b.percent) end)       
+        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, 100, "OVERHEALING", 0, viewTitle) end
         
     elseif pageName == "MANA_EFF" then
         table.sort(sortedHealers, function(a, b) return (a.hpm == b.hpm) and (a.name < b.name) or (a.hpm > b.hpm) end)
