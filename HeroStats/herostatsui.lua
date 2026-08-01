@@ -1,25 +1,25 @@
 -- ==========================================
--- HealSmart - UI & Constants (v0.5.0) - PART 1
+-- HeroStats - UI & Constants (v0.5.0) - PART 1
 -- ==========================================
 
-HEALSMART_BAR_HEIGHT = 16
-HEALSMART_BAR_GAP = 2
-HEALSMART_HEADER_HEIGHT = 20
-HEALSMART_OUT_OF_COMBAT_GRACE = 5
-HEALSMART_MANA_THRESHOLD = 300 
+HEROSTATS_BAR_HEIGHT = 16
+HEROSTATS_BAR_GAP = 2
+HEROSTATS_HEADER_HEIGHT = 20
+HEROSTATS_OUT_OF_COMBAT_GRACE = 5
+HEROSTATS_MANA_THRESHOLD = 300 
 
-HEALSMART_MIN_WIDTH = 150
-HEALSMART_MIN_HEIGHT = 110 
+HEROSTATS_MIN_WIDTH = 150
+HEROSTATS_MIN_HEIGHT = 110 
 
 local uiBars = {}
 
 -- 1. Create the Main Window Frame (Container)
-local container = CreateFrame("Frame", "HealSmartContainer", UIParent)
+local container = CreateFrame("Frame", "HeroStatsContainer", UIParent)
 container:SetClampedToScreen(true)
 container:SetResizable(true)
 
 if container.SetResizeBounds then
-    container:SetResizeBounds(HEALSMART_MIN_WIDTH, HEALSMART_MIN_HEIGHT, 1000, 1000)
+    container:SetResizeBounds(HEROSTATS_MIN_WIDTH, HEROSTATS_MIN_HEIGHT, 1000, 1000)
 end
 
 -- Draggable logic without Shift requirement
@@ -27,16 +27,16 @@ container:SetMovable(true)
 container:EnableMouse(true)
 container:RegisterForDrag("LeftButton")
 container:SetScript("OnDragStart", function(self) 
-    if HealSmartSettings and not HealSmartSettings.locked then self:StartMoving() end 
+    if HeroStatsSettings and not HeroStatsSettings.locked then self:StartMoving() end 
 end)
 container:SetScript("OnDragStop", function(self) 
     self:StopMovingOrSizing()
-    if HealSmartSettings then
+    if HeroStatsSettings then
         local point, _, relativePoint, xOfs, yOfs = self:GetPoint()
-        HealSmartSettings.point = point
-        HealSmartSettings.relativePoint = relativePoint
-        HealSmartSettings.xOfs = xOfs
-        HealSmartSettings.yOfs = yOfs
+        HeroStatsSettings.point = point
+        HeroStatsSettings.relativePoint = relativePoint
+        HeroStatsSettings.xOfs = xOfs
+        HeroStatsSettings.yOfs = yOfs
     end
 end)
 
@@ -45,12 +45,12 @@ bgTexture:SetAllPoints(container)
 bgTexture:SetColorTexture(0, 0, 0, 0.4)
 
 -- ==========================================
--- HealSmart - UI (v0.6.0) - PART 2 (Unified Header Framework)
+-- HeroStats - UI (v0.6.0) - PART 2 (Unified Header Framework)
 -- ==========================================
 
 -- 2. Create the Header Bar (KEPT INTACT!)
 local header = CreateFrame("Frame", nil, container)
-header:SetHeight(HEALSMART_HEADER_HEIGHT)
+header:SetHeight(HEROSTATS_HEADER_HEIGHT)
 header:SetPoint("TOPLEFT", container, "TOPLEFT", 0, 0)
 header:SetPoint("TOPRIGHT", container, "TOPRIGHT", 0, 0)
 
@@ -77,7 +77,7 @@ local CLASS_ICON_MAP = {
 local filterButton, lockButton, nextButton, prevButton, sessionButton
 
 -- Visual Synchronization Engines
-function HealSmart_UpdateLockVisuals(isLocked)
+function HeroStats_UpdateLockVisuals(isLocked)
     if not lockButton then return end
     local normalTex = lockButton:GetNormalTexture()
     if isLocked then
@@ -89,7 +89,7 @@ function HealSmart_UpdateLockVisuals(isLocked)
     end
 end
 
-function HealSmart_UpdateFilterVisuals(isFiltered)
+function HeroStats_UpdateFilterVisuals(isFiltered)
     if not filterButton then return end
     isCurrentlyClassFiltered = isFiltered
     
@@ -113,7 +113,7 @@ end
 local closeButton = CreateFrame("Button", nil, header, "UIPanelCloseButton")
 closeButton:SetSize(16, 16)
 closeButton:SetPoint("RIGHT", header, "RIGHT", -2, 0)
-closeButton:SetScript("OnClick", function() if HealSmart_HideMainWindow then HealSmart_HideMainWindow() end end)
+closeButton:SetScript("OnClick", function() if HeroStats_HideMainWindow then HeroStats_HideMainWindow() end end)
 closeButton:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
     GameTooltip:SetText("Hide frame (use /hs to show again)", 1, 1, 1, 1, true)
@@ -127,8 +127,8 @@ filterButton:SetSize(10, 10)
 filterButton:SetPoint("RIGHT", closeButton, "LEFT", -2, -1)
 filterButton:SetScript("OnClick", function()
     isCurrentlyClassFiltered = not isCurrentlyClassFiltered
-    HealSmart_UpdateFilterVisuals(isCurrentlyClassFiltered)
-    if HealSmart_ToggleClassFilter then HealSmart_ToggleClassFilter() end
+    HeroStats_UpdateFilterVisuals(isCurrentlyClassFiltered)
+    if HeroStats_ToggleClassFilter then HeroStats_ToggleClassFilter() end
 end)
 filterButton:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
@@ -173,7 +173,7 @@ if resetButton:GetNormalTexture() then
     resetButton:GetNormalTexture():SetVertexColor(1.0, 0.82, 0.0, 1.0)
 end
 resetButton:SetScript("OnClick", function()
-    if HealSmart_TriggerResetDialog then HealSmart_TriggerResetDialog() end
+    if HeroStats_TriggerResetDialog then HeroStats_TriggerResetDialog() end
 end)
 resetButton:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
@@ -192,8 +192,8 @@ if shoutButton:GetNormalTexture() then
 end
 
 shoutButton:SetScript("OnClick", function()
-    if HealSmart_ReportCurrentPageToChat then
-        HealSmart_ReportCurrentPageToChat()
+    if HeroStats_ReportCurrentPageToChat then
+        HeroStats_ReportCurrentPageToChat()
     end
 end)
 
@@ -210,13 +210,13 @@ shoutButton:SetScript("OnEnter", function(self)
     }
     
     -- Fetch the active limits and channel paths from the settings database safely
-    local currentLines = HealSmartSettings and HealSmartSettings.reportLinesLimit or 5
-    local currentMode = HealSmartSettings and HealSmartSettings.reportChannelMode or 1
+    local currentLines = HeroStatsSettings and HeroStatsSettings.reportLinesLimit or 5
+    local currentMode = HeroStatsSettings and HeroStatsSettings.reportChannelMode or 1
     local channelText = channelNames[currentMode] or "Raid / Party"
     
     -- Append the channel number to the string if the selection is set to custom channel
-    if currentMode == 5 and HealSmartSettings and HealSmartSettings.reportCustomChannelNum then
-        channelText = "Channel " .. HealSmartSettings.reportCustomChannelNum
+    if currentMode == 5 and HeroStatsSettings and HeroStatsSettings.reportCustomChannelNum then
+        channelText = "Channel " .. HeroStatsSettings.reportCustomChannelNum
     end
     
     -- Compile and show the dynamic live tooltip message screen
@@ -234,7 +234,7 @@ sessionButton:SetPoint("RIGHT", shoutButton, "LEFT", -4, 0) -- Back to 0y as it 
 sessionButton:SetNormalTexture("Interface\\Icons\\INV_Misc_Note_03")
 if sessionButton:GetNormalTexture() then sessionButton:GetNormalTexture():SetAllPoints(sessionButton) end
 sessionButton:SetScript("OnClick", function()
-    if HealSmart_ToggleSessionWindow then HealSmart_ToggleSessionWindow() end
+    if HeroStats_ToggleSessionWindow then HeroStats_ToggleSessionWindow() end
 end)
 sessionButton:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
@@ -250,9 +250,9 @@ lockButton:SetPoint("RIGHT", sessionButton, "LEFT", -4, 0)
 lockButton:SetNormalTexture("Interface\\Buttons\\UI-OptionsButton")
 if lockButton:GetNormalTexture() then lockButton:GetNormalTexture():SetAllPoints(lockButton) end
 lockButton:SetScript("OnClick", function()
-    if HealSmartSettings then
-        HealSmartSettings.locked = not HealSmartSettings.locked
-        HealSmart_UpdateLockVisuals(HealSmartSettings.locked)
+    if HeroStatsSettings then
+        HeroStatsSettings.locked = not HeroStatsSettings.locked
+        HeroStats_UpdateLockVisuals(HeroStatsSettings.locked)
     end
 end)
 lockButton:SetScript("OnEnter", function(self)
@@ -263,7 +263,7 @@ end)
 lockButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
 -- NEW DYNAMIC COLOR ENGINE: Tint the standard texture dynamically via VertexColor
-function HealSmart_UpdateLockVisuals(isLocked)
+function HeroStats_UpdateLockVisuals(isLocked)
     local normalTex = lockButton:GetNormalTexture()
     
     if isLocked then
@@ -279,7 +279,7 @@ function HealSmart_UpdateLockVisuals(isLocked)
     end
 end
 
-function HealSmart_UpdateFilterVisuals(isFiltered)
+function HeroStats_UpdateFilterVisuals(isFiltered)
     isCurrentlyClassFiltered = isFiltered
     
     if isCurrentlyClassFiltered then
@@ -299,22 +299,22 @@ function HealSmart_UpdateFilterVisuals(isFiltered)
 end
 
 -- ==========================================
--- HealSmart - UI (v0.5.0) - PART 3
+-- HeroStats - UI (v0.5.0) - PART 3
 -- ==========================================
 
 -- 3. Create the Scrollable Area
-local scrollFrame = CreateFrame("ScrollFrame", "HealSmartScrollFrame", container, "UIPanelScrollFrameTemplate")
+local scrollFrame = CreateFrame("ScrollFrame", "HeroStatsScrollFrame", container, "UIPanelScrollFrameTemplate")
 scrollFrame:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -2)
 scrollFrame:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -20, 2) 
 
-if HealSmartScrollFrameScrollBar then
-    local sb = HealSmartScrollFrameScrollBar
+if HeroStatsScrollFrameScrollBar then
+    local sb = HeroStatsScrollFrameScrollBar
     sb:ClearAllPoints()
     -- FIXED ANCHOR: Stays on the absolute window edge, but drops 22 pixels down to clear the icons
     sb:SetPoint("TOPRIGHT", container, "TOPRIGHT", 0, -37)
     sb:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -2, 20)
-    if HealSmartScrollFrameScrollBarScrollUpButton then HealSmartScrollFrameScrollBarScrollUpButton:Hide() end
-    if HealSmartScrollFrameScrollBarScrollDownButton then HealSmartScrollFrameScrollBarScrollDownButton:Hide() end
+    if HeroStatsScrollFrameScrollBarScrollUpButton then HeroStatsScrollFrameScrollBarScrollUpButton:Hide() end
+    if HeroStatsScrollFrameScrollBarScrollDownButton then HeroStatsScrollFrameScrollBarScrollDownButton:Hide() end
 end
 
 local scrollChild = CreateFrame("Frame", nil, scrollFrame)
@@ -341,9 +341,9 @@ resizeButton:SetScript("OnMouseUp", function(self, button)
     local targetWidth = container:GetWidth() - 22
     scrollChild:SetWidth(targetWidth)
     infoText:SetWidth(targetWidth - 10)
-    if HealSmartSettings then
-        HealSmartSettings.width = container:GetWidth()
-        HealSmartSettings.height = container:GetHeight()
+    if HeroStatsSettings then
+        HeroStatsSettings.width = container:GetWidth()
+        HeroStatsSettings.height = container:GetHeight()
     end
     for _, bar in ipairs(uiBars) do
         bar:SetWidth(targetWidth)
@@ -352,18 +352,18 @@ resizeButton:SetScript("OnMouseUp", function(self, button)
 end)
 
 -- ==========================================
--- HealSmart - UI (v0.5.0) - PART 4
+-- HeroStats - UI (v0.5.0) - PART 4
 -- ==========================================
 
 local function CreateHealerBar(index)
     local currentBarWidth = container:GetWidth() - 22
     local bar = CreateFrame("Frame", nil, scrollChild)
-    bar:SetSize(currentBarWidth, HEALSMART_BAR_HEIGHT)
+    bar:SetSize(currentBarWidth, HEROSTATS_BAR_HEIGHT)
     
     if index == 1 then
         bar:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 1, 0)
     else
-        bar:SetPoint("TOPLEFT", uiBars[index - 1], "BOTTOMLEFT", 0, -HEALSMART_BAR_GAP)
+        bar:SetPoint("TOPLEFT", uiBars[index - 1], "BOTTOMLEFT", 0, -HEROSTATS_BAR_GAP)
     end
 
     local bg = bar:CreateTexture(nil, "BACKGROUND", nil, -8)
@@ -388,12 +388,12 @@ local function CreateHealerBar(index)
     local leftLine = bar:CreateTexture(nil, "OVERLAY")
     leftLine:SetColorTexture(0, 0, 0, 0.9)
     leftLine:SetPoint("TOPLEFT", bar, "TOPLEFT", 0, 0)
-    leftLine:SetSize(1, HEALSMART_BAR_HEIGHT)
+    leftLine:SetSize(1, HEROSTATS_BAR_HEIGHT)
 
     local rightLine = bar:CreateTexture(nil, "OVERLAY")
     rightLine:SetColorTexture(0, 0, 0, 0.9)
     rightLine:SetPoint("TOPRIGHT", bar, "TOPRIGHT", 0, 0)
-    rightLine:SetSize(1, HEALSMART_BAR_HEIGHT)
+    rightLine:SetSize(1, HEROSTATS_BAR_HEIGHT)
 
     local statusBar = CreateFrame("StatusBar", nil, bar)
     statusBar:SetPoint("TOPLEFT", bar, "TOPLEFT", 1, -1)
@@ -422,13 +422,13 @@ local function CreateHealerBar(index)
     return bar
 end
 
-function HealSmart_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffective, viewTitle)
+function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffective, viewTitle)
     maxVal = tonumber(maxVal) or 0
     infoText:SetText("")
 
     for _, bar in ipairs(uiBars) do bar:Hide() end
 
-    local totalHeight = #sortedData * (HEALSMART_BAR_HEIGHT + HEALSMART_BAR_GAP)
+    local totalHeight = #sortedData * (HEROSTATS_BAR_HEIGHT + HEROSTATS_BAR_GAP)
     scrollChild:SetHeight(totalHeight)
     local targetWidth = container:GetWidth() - 22
 
@@ -481,11 +481,11 @@ function HealSmart_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
         bar.leftText:SetText(string.format("%d. %s", i, data.name))
         
         -- FIXED v0.9.0: Always relies on the calibrated historical session time or active duration
-        local fightSeconds = HealSmart_CurrentFightDuration_RenderOverride or HealSmart_CurrentFightDuration or 1
+        local fightSeconds = HeroStats_CurrentFightDuration_RenderOverride or HeroStats_CurrentFightDuration or 1
         if fightSeconds < 1 then fightSeconds = 1 end
 
         -- FIXED v0.8.0: Cleanly relies on your incoming argument token, destroying the legacy array dependency!
-        headerText:SetText(viewTitle or "HealSmart")
+        headerText:SetText(viewTitle or "HeroStats")
 
         -- FIXED v0.8.0: Text tokens are now 100% synchronized with your core sorted views!
         if viewType == "HEALING" then
@@ -531,7 +531,7 @@ function HealSmart_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
 
         -- NEW v0.9.0: Fully Data-Driven Text Routed Tooltip Engine (Server-Grafting Secured)
         bar:SetScript("OnEnter", function(self)
-            local pageRecord = HealSmart_GetPageRecord(HealSmart_CurrentActivePage)
+            local pageRecord = HeroStats_GetPageRecord(HeroStats_CurrentActivePage)
             local pageName = pageRecord and pageRecord.name
             if pageName == "FRONTPAGE" then return end
 
@@ -555,7 +555,7 @@ function HealSmart_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
             GameTooltip:AddLine(fullServerName, classColor.r, classColor.g, classColor.b)
             GameTooltip:AddLine(" ")
                         
-            local fightSeconds = HealSmart_CurrentFightDuration_RenderOverride or HealSmart_CurrentFightDuration or 1
+            local fightSeconds = HeroStats_CurrentFightDuration_RenderOverride or HeroStats_CurrentFightDuration or 1
             if fightSeconds < 1 then fightSeconds = 1 end
 
             if pageName == "HEALING" or pageName == "OVERHEALING" then
@@ -569,7 +569,7 @@ function HealSmart_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
                     
                     local lineCount = 1
                     for i = 1, #sortedSpells do
-                        if lineCount > 8 then break end
+                        if lineCount > 10 then break end
                         local s = sortedSpells[i]
                         
                         if pageName == "HEALING" then
@@ -603,7 +603,7 @@ function HealSmart_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
                     end
                     table.sort(sortedManaSpells, function(a, b) return a.spent > b.spent end)
                     
-                    for i = 1, math.min(8, #sortedManaSpells) do
+                    for i = 1, math.min(10, #sortedManaSpells) do
                         local m = sortedManaSpells[i]
                         local spellHpm = (m.spent > 0) and (m.eff / m.spent) or 0
                         local formattedMana = FormatDotNumber and FormatDotNumber(m.spent) or m.spent
@@ -722,51 +722,51 @@ function HealSmart_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
     end
 end
 
-function HealSmart_RenderTextMessage(titleString, bodyString)
+function HeroStats_RenderTextMessage(titleString, bodyString)
     for _, bar in ipairs(uiBars) do bar:Hide() end
     headerText:SetText(titleString)
     infoText:SetText(bodyString)
     scrollChild:SetHeight(120)
 end
 
-function HealSmart_ClearDisplay()
+function HeroStats_ClearDisplay()
     for _, bar in ipairs(uiBars) do bar:Hide() end
     scrollChild:SetHeight(1)
 end
 
-nextButton:SetScript("OnClick", function() if HealSmart_ChangePage then HealSmart_ChangePage(1) end end)
-prevButton:SetScript("OnClick", function() if HealSmart_ChangePage then HealSmart_ChangePage(-1) end end)
+nextButton:SetScript("OnClick", function() if HeroStats_ChangePage then HeroStats_ChangePage(1) end end)
+prevButton:SetScript("OnClick", function() if HeroStats_ChangePage then HeroStats_ChangePage(-1) end end)
 
-function HealSmart_ShowMainWindow()
+function HeroStats_ShowMainWindow()
     if container then
         container:Show()
-        if HealSmartSettings then HealSmartSettings.hidden = false end
-        if HealSmart_RefreshCurrentPage then HealSmart_RefreshCurrentPage() end
+        if HeroStatsSettings then HeroStatsSettings.hidden = false end
+        if HeroStats_RefreshCurrentPage then HeroStats_RefreshCurrentPage() end
     end
 end
 
 -- Global control interface to hide the main window frame securely
-function HealSmart_HideMainWindow()
+function HeroStats_HideMainWindow()
     if container then
         container:Hide()
-        if HealSmartSettings then HealSmartSettings.hidden = true end
+        if HeroStatsSettings then HeroStatsSettings.hidden = true end
         
         -- ROUTED: Now using the unified central print engine safely
-        if HealSmart_Print then
-            HealSmart_Print("Window is hidden. You can show it again by typing /hs.")
+        if HeroStats_Print then
+            HeroStats_Print("Window is hidden. You can show it again by typing /hs.")
         end
     end
 end
 
 -- NEW: Official Blizzard Static Popup Confirmation Specification Sheet
-StaticPopupDialogs["HEALSMART_WIPE_CONFIRM"] = {
+StaticPopupDialogs["HEROSTATS_WIPE_CONFIRM"] = {
     text = "Are you sure you want to wipe all data and clear your entire fight history?",
     button1 = "Yes, Clear Everything",
     button2 = "No, Cancel",
     OnAccept = function()
         -- Route directly to the backend clearing engine in the core file
-        if HealSmart_ExecuteMasterWipeData then
-            HealSmart_ExecuteMasterWipeData()
+        if HeroStats_ExecuteMasterWipeData then
+            HeroStats_ExecuteMasterWipeData()
         end
     end,
     timeout = 0,
@@ -776,53 +776,53 @@ StaticPopupDialogs["HEALSMART_WIPE_CONFIRM"] = {
 }
 
 -- Global bridge allowing the header button object to spawn the prompt panel instantly
-function HealSmart_TriggerResetDialog()
-    StaticPopup_Show("HEALSMART_WIPE_CONFIRM")
+function HeroStats_TriggerResetDialog()
+    StaticPopup_Show("HEROSTATS_WIPE_CONFIRM")
 end
 
 local loaderFrame = CreateFrame("Frame")
 loaderFrame:RegisterEvent("ADDON_LOADED")
 loaderFrame:SetScript("OnEvent", function(self, event, addonName)
-    if addonName == "HealSmart" then
-        if not HealSmartSettings then
-            HealSmartSettings = { width = 200, height = HEALSMART_MIN_HEIGHT, point = "CENTER", relativePoint = "CENTER", xOfs = 0, yOfs = 0, page = 0, locked = false, hidden = false }
+    if addonName == "HeroStats" then
+        if not HeroStatsSettings then
+            HeroStatsSettings = { width = 200, height = HEROSTATS_MIN_HEIGHT, point = "CENTER", relativePoint = "CENTER", xOfs = 0, yOfs = 0, page = 0, locked = false, hidden = false }
         end
-        if not HealSmartSettings.page then HealSmartSettings.page = 0 end
-        if HealSmartSettings.locked == nil then HealSmartSettings.locked = false end
-        if HealSmartSettings.hidden == nil then HealSmartSettings.hidden = false end
+        if not HeroStatsSettings.page then HeroStatsSettings.page = 0 end
+        if HeroStatsSettings.locked == nil then HeroStatsSettings.locked = false end
+        if HeroStatsSettings.hidden == nil then HeroStatsSettings.hidden = false end
 
-        container:SetSize(HealSmartSettings.width, HealSmartSettings.height)
+        container:SetSize(HeroStatsSettings.width, HeroStatsSettings.height)
         container:ClearAllPoints()
-        container:SetPoint(HealSmartSettings.point, UIParent, HealSmartSettings.relativePoint, HealSmartSettings.xOfs, HealSmartSettings.yOfs)
+        container:SetPoint(HeroStatsSettings.point, UIParent, HeroStatsSettings.relativePoint, HeroStatsSettings.xOfs, HeroStatsSettings.yOfs)
         scrollChild:SetWidth(container:GetWidth() - 22)
         infoText:SetWidth(container:GetWidth() - 32)
         
-        if HealSmartSettings.selectedViewSessionID == nil then 
-            HealSmartSettings.selectedViewSessionID = 0 
+        if HeroStatsSettings.selectedViewSessionID == nil then 
+            HeroStatsSettings.selectedViewSessionID = 0 
         end
 
-        if HealSmart_SetInitialPage then 
-            HealSmart_SetInitialPage(HealSmartSettings.page) 
+        if HeroStats_SetInitialPage then 
+            HeroStats_SetInitialPage(HeroStatsSettings.page) 
         end
         
-        if HealSmart_UpdateLockVisuals then HealSmart_UpdateLockVisuals(HealSmartSettings.locked) end
-        if HealSmart_UpdateFilterVisuals then HealSmart_UpdateFilterVisuals(false) end
+        if HeroStats_UpdateLockVisuals then HeroStats_UpdateLockVisuals(HeroStatsSettings.locked) end
+        if HeroStats_UpdateFilterVisuals then HeroStats_UpdateFilterVisuals(false) end
         
-        if HealSmartSettings.hidden then
+        if HeroStatsSettings.hidden then
             container:Hide()
         else
             container:Show()
         end
         
-        HealSmart_ClearDisplay()
+        HeroStats_ClearDisplay()
 
         C_Timer.After(1.0, function()
             scrollChild:SetWidth(container:GetWidth() - 22)
-            if HealSmart_RefreshCurrentPage then HealSmart_RefreshCurrentPage() end
+            if HeroStats_RefreshCurrentPage then HeroStats_RefreshCurrentPage() end
         end)
 
         self:UnregisterEvent("ADDON_LOADED")
     end
 end)
 
--- end healsmartui.lua
+-- end herostatsui.lua

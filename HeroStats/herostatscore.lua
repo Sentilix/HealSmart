@@ -1,12 +1,12 @@
 -- ==========================================
--- HealSmart - Core Engine (v0.6.0) - PART 1 & 2 (Global Variable Framework)
+-- HeroStats - Core Engine (v0.6.0) - PART 1 & 2 (Global Variable Framework)
 -- ==========================================
 
 -- Configuration Constants
-HEALSMART_MAX_SAVED_SESSIONS = 20
+HEROSTATS_MAX_SAVED_SESSIONS = 20
 
-HealSmart_CurrentActivePage = 0 
-HealSmart_CurrentFightDuration = 0
+HeroStats_CurrentActivePage = 0 
+HeroStats_CurrentFightDuration = 0
 
 -- Runtime cache objects
 local playerGUID = UnitGUID("player")
@@ -38,12 +38,12 @@ timerFrame:SetScript("OnEvent", function(self, event)
     if event == "PLAYER_REGEN_DISABLED" then
         -- RESET AND START: Combat has initiated
         fightStartTime = GetTime()
-        HealSmart_CurrentFightDuration = 0
+        HeroStats_CurrentFightDuration = 0
         
         -- Start an independent on-update ticker to count seconds live
         self:SetScript("OnUpdate", function()
             if fightStartTime > 0 then
-                HealSmart_CurrentFightDuration = GetTime() - fightStartTime
+                HeroStats_CurrentFightDuration = GetTime() - fightStartTime
             end
         end)
         
@@ -51,22 +51,22 @@ timerFrame:SetScript("OnEvent", function(self, event)
         self:SetScript("OnUpdate", nil)
         
         if fightStartTime > 0 then
-            HealSmart_CurrentFightDuration = GetTime() - fightStartTime
+            HeroStats_CurrentFightDuration = GetTime() - fightStartTime
             
             -- STAMP THE DURATION: Lock the precise seconds directly onto the active session data
-            if HealSmartSettings and HealSmartSettings.sessions then
-                local targetIdx = HealSmartSettings.activeSessionIndex or #HealSmartSettings.sessions
-                local currentSession = HealSmartSettings.sessions[targetIdx]
+            if HeroStatsSettings and HeroStatsSettings.sessions then
+                local targetIdx = HeroStatsSettings.activeSessionIndex or #HeroStatsSettings.sessions
+                local currentSession = HeroStatsSettings.sessions[targetIdx]
                 if currentSession then
                     -- Save the fight duration cleanly inside this specific session container
-                    currentSession.fightDuration = HealSmart_CurrentFightDuration
+                    currentSession.fightDuration = HeroStats_CurrentFightDuration
                 end
             end
             
             -- Accumulate the total database time onto your Overall/Total data tracking layer
-            if HealSmartSettings and HealSmartSettings.overallData then
-                if not HealSmartSettings.overallData.totalTime then HealSmartSettings.overallData.totalTime = 0 end
-                HealSmartSettings.overallData.totalTime = HealSmartSettings.overallData.totalTime + HealSmart_CurrentFightDuration
+            if HeroStatsSettings and HeroStatsSettings.overallData then
+                if not HeroStatsSettings.overallData.totalTime then HeroStatsSettings.overallData.totalTime = 0 end
+                HeroStatsSettings.overallData.totalTime = HeroStatsSettings.overallData.totalTime + HeroStats_CurrentFightDuration
             end
         end
         fightStartTime = 0
@@ -75,7 +75,7 @@ timerFrame:SetScript("OnEvent", function(self, event)
 end)
 
 -- Multi-Session Profile Factory: Securely fetches or creates data rows within any sub-table target
-function HealSmart_GetOrCreateProfile(dataTable, guid, name, classToken)
+function HeroStats_GetOrCreateProfile(dataTable, guid, name, classToken)
     if not dataTable then return nil end
     if not dataTable[guid] then
         local unitToken = "player"
@@ -141,9 +141,9 @@ function HealSmart_GetOrCreateProfile(dataTable, guid, name, classToken)
 end
 
 -- Helper interface to grab the active writing combat healer block
-function HealSmart_GetActiveSessionHealers()
-    if HealSmartSettings and HealSmartSettings.sessions and HealSmartSettings.activeSessionIndex then
-        local activeSession = HealSmartSettings.sessions[HealSmartSettings.activeSessionIndex]
+function HeroStats_GetActiveSessionHealers()
+    if HeroStatsSettings and HeroStatsSettings.sessions and HeroStatsSettings.activeSessionIndex then
+        local activeSession = HeroStatsSettings.sessions[HeroStatsSettings.activeSessionIndex]
         if activeSession then
             return activeSession.healers
         end
@@ -174,14 +174,14 @@ local function UpdateGroupRosterCache()
 end
 
 -- ==========================================
--- HealSmart - Core Engine (v0.8.0) - PART 2 (Zero-Value Filter Refactor)
+-- HeroStats - Core Engine (v0.8.0) - PART 2 (Zero-Value Filter Refactor)
 -- ==========================================
 
 local sortedHealers = {}
 
 function coreFrame.RefreshStats()
     -- Unified v0.8.0 Data-Driven Token Matrix Routing
-    local pageRecord = HealSmart_GetPageRecord(HealSmart_CurrentActivePage)
+    local pageRecord = HeroStats_GetPageRecord(HeroStats_CurrentActivePage)
     local pageName = pageRecord.name
     local viewTitle = pageRecord.title
 
@@ -193,9 +193,9 @@ function coreFrame.RefreshStats()
             end
         end
 
-        local welcomeMessage = "Welcome to HealSmart!\n\nUse the < and > arrows in the top right to switch statistics screens.\n\nData tracks automatically as soon as combat starts."
-        if HealSmart_RenderTextMessage then
-            HealSmart_RenderTextMessage(viewTitle or "HealSmart", welcomeMessage)
+        local welcomeMessage = "Welcome to HeroStats!\n\nUse the < and > arrows in the top right to switch statistics screens.\n\nData tracks automatically as soon as combat starts."
+        if HeroStats_RenderTextMessage then
+            HeroStats_RenderTextMessage(viewTitle or "HeroStats", welcomeMessage)
         end
         return
     end
@@ -215,21 +215,21 @@ function coreFrame.RefreshStats()
     local topDamageTakenValue = 0
     local topManaGainedValue = 0
 
-    local activeThreshold = HEALSMART_MANA_THRESHOLD or 300
+    local activeThreshold = HEROSTATS_MANA_THRESHOLD or 300
     if not IsInGroup() then activeThreshold = 0 end
 
     local dataSourceTable = nil
     local sessionLabel = "Current Fight"
-    local activeViewID = HealSmartSettings and HealSmartSettings.selectedViewSessionID or 0
+    local activeViewID = HeroStatsSettings and HeroStatsSettings.selectedViewSessionID or 0
 
     if activeViewID == -1 then
-        dataSourceTable = HealSmartSettings and HealSmartSettings.overallData
+        dataSourceTable = HeroStatsSettings and HeroStatsSettings.overallData
         sessionLabel = "Overall Total"
     else
-        if HealSmartSettings and HealSmartSettings.sessions then
-            local targetIdx = HealSmartSettings.activeSessionIndex or 1
+        if HeroStatsSettings and HeroStatsSettings.sessions then
+            local targetIdx = HeroStatsSettings.activeSessionIndex or 1
             if activeViewID > 0 then
-                for idx, session in ipairs(HealSmartSettings.sessions) do
+                for idx, session in ipairs(HeroStatsSettings.sessions) do
                     if session.id == activeViewID then
                         targetIdx = idx
                         sessionLabel = "Fight #" .. session.id
@@ -237,29 +237,29 @@ function coreFrame.RefreshStats()
                     end
                 end
             end
-            local sessionData = HealSmartSettings.sessions[targetIdx]
+            local sessionData = HeroStatsSettings.sessions[targetIdx]
             dataSourceTable = sessionData and sessionData.healers
         end
     end
 
     -- NEW v0.9.0: Dynamic Historical Time Calibration Pipeline
-    local activeFightSeconds = HealSmart_CurrentFightDuration or 0 -- Default fallback
+    local activeFightSeconds = HeroStats_CurrentFightDuration or 0 -- Default fallback
     
     if activeViewID == -1 then
         -- If viewing Overall Total, pull the full accumulated historical time
-        activeFightSeconds = HealSmartSettings and HealSmartSettings.overallData and HealSmartSettings.overallData.totalTime or 0
+        activeFightSeconds = HeroStatsSettings and HeroStatsSettings.overallData and HeroStatsSettings.overallData.totalTime or 0
     else
-        if HealSmartSettings and HealSmartSettings.sessions then
-            local targetIdx = HealSmartSettings.activeSessionIndex or 1
+        if HeroStatsSettings and HeroStatsSettings.sessions then
+            local targetIdx = HeroStatsSettings.activeSessionIndex or 1
             if activeViewID > 0 then
-                for idx, session in ipairs(HealSmartSettings.sessions) do
+                for idx, session in ipairs(HeroStatsSettings.sessions) do
                     if session.id == activeViewID then
                         targetIdx = idx
                         break
                     end
                 end
             end
-            local sessionData = HealSmartSettings.sessions[targetIdx]
+            local sessionData = HeroStatsSettings.sessions[targetIdx]
             -- Pull the frozen historical seconds directly from this specific archived fight!
             activeFightSeconds = sessionData and sessionData.fightDuration or activeFightSeconds
         end
@@ -270,7 +270,7 @@ function coreFrame.RefreshStats()
     
     -- Now export this local calibrated time out so your UI function can see it perfectly
     -- (We simply overwrite the global variable for this specific render tick frame)
-    HealSmart_CurrentFightDuration_RenderOverride = activeFightSeconds
+    HeroStats_CurrentFightDuration_RenderOverride = activeFightSeconds
 
     if dataSourceTable then
         for guid, data in pairs(dataSourceTable) do
@@ -341,74 +341,74 @@ function coreFrame.RefreshStats()
 
     -- Render blank state if no dataset rows found (v0.8.0 Data-Driven Secured)
     if #sortedHealers == 0 then
-        local baseTitle = viewTitle or "HealSmart"
+        local baseTitle = viewTitle or "HeroStats"
         local pageTitle = baseTitle .. " (" .. sessionLabel .. ")"
-        if HealSmart_RenderTextMessage then HealSmart_RenderTextMessage(pageTitle, "") end
+        if HeroStats_RenderTextMessage then HeroStats_RenderTextMessage(pageTitle, "") end
         return
     end
 
     -- FIXED v0.8.0: Data-driven sorting and rendering pipeline (Consolidated & Token Synchronized)
     if pageName == "DAMAGE_DONE" then
         table.sort(sortedHealers, function(a, b) return (a.damageDone == b.damageDone) and (a.name < b.name) or (a.damageDone > b.damageDone) end)
-        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topDamageDoneValue, "DAMAGE_DONE", 0, viewTitle) end
+        if HeroStats_RenderRaidBars then HeroStats_RenderRaidBars(sortedHealers, topDamageDoneValue, "DAMAGE_DONE", 0, viewTitle) end
         
     elseif pageName == "DAMAGE_TAKEN" then
         table.sort(sortedHealers, function(a, b) return (a.damageTaken == b.damageTaken) and (a.name < b.name) or (a.damageTaken > b.damageTaken) end)
-        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topDamageTakenValue, "DAMAGE_TAKEN", 0, viewTitle) end
+        if HeroStats_RenderRaidBars then HeroStats_RenderRaidBars(sortedHealers, topDamageTakenValue, "DAMAGE_TAKEN", 0, viewTitle) end
 
     elseif pageName == "HEALING" then
         table.sort(sortedHealers, function(a, b) return (a.effective == b.effective) and (a.name < b.name) or (a.effective > b.effective) end)
-        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topHealerAmount, "HEALING", totalRaidEffective, viewTitle) end
+        if HeroStats_RenderRaidBars then HeroStats_RenderRaidBars(sortedHealers, topHealerAmount, "HEALING", totalRaidEffective, viewTitle) end
         
     elseif pageName == "OVERHEALING" then
         table.sort(sortedHealers, function(a, b) return (a.percent == b.percent) and (a.name < b.name) or (a.percent > b.percent) end)       
-        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, 100, "OVERHEALING", 0, viewTitle) end
+        if HeroStats_RenderRaidBars then HeroStats_RenderRaidBars(sortedHealers, 100, "OVERHEALING", 0, viewTitle) end
         
     elseif pageName == "MANA_EFF" then
         table.sort(sortedHealers, function(a, b) return (a.hpm == b.hpm) and (a.name < b.name) or (a.hpm > b.hpm) end)
-        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topHPMValue, "MANA_EFF", 0, viewTitle) end
+        if HeroStats_RenderRaidBars then HeroStats_RenderRaidBars(sortedHealers, topHPMValue, "MANA_EFF", 0, viewTitle) end
         
     elseif pageName == "MANA_GAINED" then
         table.sort(sortedHealers, function(a, b) return (a.manaGained == b.manaGained) and (a.name < b.name) or (a.manaGained > b.manaGained) end)
-        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topManaGainedValue, "MANA_GAINED", 0, viewTitle) end
+        if HeroStats_RenderRaidBars then HeroStats_RenderRaidBars(sortedHealers, topManaGainedValue, "MANA_GAINED", 0, viewTitle) end
 
     elseif pageName == "DISPELS" then
         table.sort(sortedHealers, function(a, b) return (a.dispels == b.dispels) and (a.name < b.name) or (a.dispels > b.dispels) end)
-        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topDispelValue, "DISPELS", 0, viewTitle) end
+        if HeroStats_RenderRaidBars then HeroStats_RenderRaidBars(sortedHealers, topDispelValue, "DISPELS", 0, viewTitle) end
         
     elseif pageName == "BUFFS" then
         table.sort(sortedHealers, function(a, b) return (a.buffs == b.buffs) and (a.name < b.name) or (a.buffs > b.buffs) end)
-        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topBuffsValue, "BUFFS", 0, viewTitle) end
+        if HeroStats_RenderRaidBars then HeroStats_RenderRaidBars(sortedHealers, topBuffsValue, "BUFFS", 0, viewTitle) end
         
     elseif pageName == "DEATHS" then
         table.sort(sortedHealers, function(a, b) return (a.deaths == b.deaths) and (a.name < b.name) or (a.deaths > b.deaths) end)
-        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topDeathValue, "DEATHS", 0, viewTitle) end
+        if HeroStats_RenderRaidBars then HeroStats_RenderRaidBars(sortedHealers, topDeathValue, "DEATHS", 0, viewTitle) end
         
     elseif pageName == "RESURRECTS" then
         table.sort(sortedHealers, function(a, b) return (a.resurrects == b.resurrects) and (a.name < b.name) or (a.resurrects > b.resurrects) end)
-        if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topRessValue, "RESURRECTS", 0, viewTitle) end
+        if HeroStats_RenderRaidBars then HeroStats_RenderRaidBars(sortedHealers, topRessValue, "RESURRECTS", 0, viewTitle) end
     end
 end
 
-function HealSmart_ChangePage(direction)
-    local maxPages = #HealSmart_Pages
-    HealSmart_CurrentActivePage = HealSmart_CurrentActivePage + direction
+function HeroStats_ChangePage(direction)
+    local maxPages = #HeroStats_Pages
+    HeroStats_CurrentActivePage = HeroStats_CurrentActivePage + direction
     
-    if HealSmart_CurrentActivePage > maxPages then HealSmart_CurrentActivePage = 1 end
-    if HealSmart_CurrentActivePage < 1 then HealSmart_CurrentActivePage = maxPages end
+    if HeroStats_CurrentActivePage > maxPages then HeroStats_CurrentActivePage = 1 end
+    if HeroStats_CurrentActivePage < 1 then HeroStats_CurrentActivePage = maxPages end
     
-    if HealSmartSettings then HealSmartSettings.page = HealSmart_CurrentActivePage end
-    HealSmart_RefreshCurrentPage()
+    if HeroStatsSettings then HeroStatsSettings.page = HeroStats_CurrentActivePage end
+    HeroStats_RefreshCurrentPage()
 end
 
-function HealSmart_ToggleClassFilter()
+function HeroStats_ToggleClassFilter()
     if currentFilterMode == "ALL" then currentFilterMode = "CLASS" else currentFilterMode = "ALL" end
     if coreFrame.RefreshStats then coreFrame.RefreshStats() end
     return currentFilterMode
 end
 
 -- ==========================================
--- HealSmart - Core Engine (v0.7.0) - PART 3A (Combat Log Parser - Part 1)
+-- HeroStats - Core Engine (v0.7.0) - PART 3A (Combat Log Parser - Part 1)
 -- ==========================================
 
 local isSessionActive = false      
@@ -443,7 +443,7 @@ local function GetLiveSpellManaCost(spellID)
 end
 
 -- =========================================================================
--- --- HealSmart - Core Engine (v0.8.0) - OnCombatLogEvent Pipeline ---
+-- --- HeroStats - Core Engine (v0.8.0) - OnCombatLogEvent Pipeline ---
 -- =========================================================================
 local activeHealers = nil;
 
@@ -479,7 +479,7 @@ local function OnEvent_SPELL_CAST_SUCCESS(eventType, sourceGUID, sourceName, sou
             local isHealingSpell = SPELL_CLASS_CACHE[spellName] or (spellName == "Power Word: Shield")
 
             if actualCost > 0 and isHealingSpell then
-                local healer = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, healerClass)
+                local healer = HeroStats_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, healerClass)
                 
                 -- FIXED: Now safely locked inside the healing-filter wall!
                 healer.manaUsed = (healer.manaUsed or 0) + actualCost
@@ -490,8 +490,8 @@ local function OnEvent_SPELL_CAST_SUCCESS(eventType, sourceGUID, sourceName, sou
                 end
                 healer.spellMana[fullSpellName].manaUsed = healer.spellMana[fullSpellName].manaUsed + actualCost
 
-                if HealSmartSettings and HealSmartSettings.overallData then
-                    local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanSourceName, healerClass)
+                if HeroStatsSettings and HeroStatsSettings.overallData then
+                    local overallHealer = HeroStats_GetOrCreateProfile(HeroStatsSettings.overallData, sourceGUID, cleanSourceName, healerClass)
                     
                     -- FIXED: Overall master safely locked inside the healing-filter wall too!
                     overallHealer.manaUsed = (overallHealer.manaUsed or 0) + actualCost
@@ -507,13 +507,13 @@ local function OnEvent_SPELL_CAST_SUCCESS(eventType, sourceGUID, sourceName, sou
 
         -- Run buff watchlist check
         if BUFF_WATCH_LIST[spellName] then
-            local healer = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, healerClass)
+            local healer = HeroStats_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, healerClass)
             healer.buffs = (healer.buffs or 0) + 1
             if not healer.spellBuffs then healer.spellBuffs = {} end
             healer.spellBuffs[spellName] = (healer.spellBuffs[spellName] or 0) + 1
 
-            if HealSmartSettings and HealSmartSettings.overallData then
-                local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanSourceName, healerClass)
+            if HeroStatsSettings and HeroStatsSettings.overallData then
+                local overallHealer = HeroStats_GetOrCreateProfile(HeroStatsSettings.overallData, sourceGUID, cleanSourceName, healerClass)
                 overallHealer.buffs = (overallHealer.buffs or 0) + 1
                 if not overallHealer.spellBuffs then overallHealer.spellBuffs = {} end
                 overallHealer.spellBuffs[spellName] = (overallHealer.spellBuffs[spellName] or 0) + 1
@@ -560,7 +560,7 @@ local function OnEvent_DAMAGE(eventType, sourceGUID, sourceName, sourceFlags, de
                 end
             end
                 
-            local profile = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, sourceClass)
+            local profile = HeroStats_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, sourceClass)
             profile.damageDone = profile.damageDone + amount
                 
             if fullSpellName then
@@ -568,8 +568,8 @@ local function OnEvent_DAMAGE(eventType, sourceGUID, sourceName, sourceFlags, de
                 profile.spellDamage[fullSpellName] = (profile.spellDamage[fullSpellName] or 0) + amount
             end
                 
-            if HealSmartSettings and HealSmartSettings.overallData then
-                local overallProfile = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanSourceName, sourceClass)
+            if HeroStatsSettings and HeroStatsSettings.overallData then
+                local overallProfile = HeroStats_GetOrCreateProfile(HeroStatsSettings.overallData, sourceGUID, cleanSourceName, sourceClass)
                 overallProfile.damageDone = overallProfile.damageDone + amount
                     
                 if fullSpellName then
@@ -616,7 +616,7 @@ local function OnEvent_DAMAGE(eventType, sourceGUID, sourceName, sourceFlags, de
                 schoolColor = "poison"
             end
 
-            local profile = HealSmart_GetOrCreateProfile(activeHealers, destGUID, cleanDestName, destClass)
+            local profile = HeroStats_GetOrCreateProfile(activeHealers, destGUID, cleanDestName, destClass)
             profile.damageTaken = profile.damageTaken + amount
 
             -- Secure multidimensional sub-table writing for current session matrix
@@ -626,8 +626,8 @@ local function OnEvent_DAMAGE(eventType, sourceGUID, sourceName, sourceFlags, de
             end
             profile.spellTaken[combinedSourceKey].amt = profile.spellTaken[combinedSourceKey].amt + amount
                 
-            if HealSmartSettings and HealSmartSettings.overallData then
-                local overallProfile = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, destGUID, cleanDestName, destClass)
+            if HeroStatsSettings and HeroStatsSettings.overallData then
+                local overallProfile = HeroStats_GetOrCreateProfile(HeroStatsSettings.overallData, destGUID, cleanDestName, destClass)
                 overallProfile.damageTaken = overallProfile.damageTaken + amount
                     
                 if not overallProfile.spellTaken then overallProfile.spellTaken = {} end
@@ -661,7 +661,7 @@ local function OnEvent_HEAL(eventType, sourceGUID, sourceName, sourceFlags, dest
         local classFilename = groupRosterCache[cleanName] or SPELL_CLASS_CACHE[spellName]
 
         if classFilename and ALLOWED_CLASSES[classFilename] then
-            local healer = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanName, classFilename)
+            local healer = HeroStats_GetOrCreateProfile(activeHealers, sourceGUID, cleanName, classFilename)
             healer.effective = healer.effective + effective
             healer.overheal = healer.overheal + overheal
                 
@@ -683,8 +683,8 @@ local function OnEvent_HEAL(eventType, sourceGUID, sourceName, sourceFlags, dest
                 healer.spellHeals[fullSpellName].overheal = healer.spellHeals[fullSpellName].overheal + overheal
             end
 
-            if HealSmartSettings and HealSmartSettings.overallData then
-                local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanName, classFilename)
+            if HeroStatsSettings and HeroStatsSettings.overallData then
+                local overallHealer = HeroStats_GetOrCreateProfile(HeroStatsSettings.overallData, sourceGUID, cleanName, classFilename)
                 overallHealer.effective = overallHealer.effective + effective
                 overallHealer.overheal = overallHealer.overheal + overheal
                     
@@ -742,7 +742,7 @@ local function OnEvent_SHIELD(eventType, sourceGUID, sourceName, sourceFlags, de
                     end
                 end
                     
-                local profile = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, sourceClass)
+                local profile = HeroStats_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, sourceClass)
                 profile.damageDone = profile.damageDone + amount
                     
                 if fullSpellName then
@@ -750,8 +750,8 @@ local function OnEvent_SHIELD(eventType, sourceGUID, sourceName, sourceFlags, de
                     profile.spellDamage[fullSpellName] = (profile.spellDamage[fullSpellName] or 0) + amount
                 end
                     
-                if HealSmartSettings and HealSmartSettings.overallData then
-                    local overallProfile = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanSourceName, sourceClass)
+                if HeroStatsSettings and HeroStatsSettings.overallData then
+                    local overallProfile = HeroStats_GetOrCreateProfile(HeroStatsSettings.overallData, sourceGUID, cleanSourceName, sourceClass)
                     overallProfile.damageDone = overallProfile.damageDone + amount
                         
                     if fullSpellName then
@@ -787,7 +787,7 @@ local function OnEvent_ABSORBED(eventType, sourceGUID, sourceName, sourceFlags, 
 
         if isGroupMember then
             local cleanName = string.match(shieldCasterName, "([^-]+)")
-            local healer = HealSmart_GetOrCreateProfile(activeHealers, shieldCasterGUID, cleanName, "PRIEST")
+            local healer = HeroStats_GetOrCreateProfile(activeHealers, shieldCasterGUID, cleanName, "PRIEST")
             healer.effective = healer.effective + shieldAbsorbAmount
                 
             -- NEW v0.8.0: Aggregate Shield absorption abilities dynamically in current session
@@ -797,8 +797,8 @@ local function OnEvent_ABSORBED(eventType, sourceGUID, sourceName, sourceFlags, 
             end
             healer.spellHeals[absorbSpellName].effective = healer.spellHeals[absorbSpellName].effective + shieldAbsorbAmount
 
-            if HealSmartSettings and HealSmartSettings.overallData then
-                local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, shieldCasterGUID, cleanName, "PRIEST")
+            if HeroStatsSettings and HeroStatsSettings.overallData then
+                local overallHealer = HeroStats_GetOrCreateProfile(HeroStatsSettings.overallData, shieldCasterGUID, cleanName, "PRIEST")
                 overallHealer.effective = overallHealer.effective + shieldAbsorbAmount
                     
                 -- Also aggregate into the overall night master totals safely
@@ -827,12 +827,12 @@ local function OnEvent_UNIT_DIED(eventType, sourceGUID, sourceName, sourceFlags,
             
         if healerClass and ALLOWED_CLASSES[healerClass] then
             -- Add points to the person who died inside the current session array
-            local healer = HealSmart_GetOrCreateProfile(activeHealers, destGUID, cleanDestName, healerClass)
+            local healer = HeroStats_GetOrCreateProfile(activeHealers, destGUID, cleanDestName, healerClass)
             healer.deaths = healer.deaths + 1
                 
             -- Accumulate cumulatively inside the master Overall database sheet
-            if HealSmartSettings and HealSmartSettings.overallData then
-                local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, destGUID, cleanDestName, healerClass)
+            if HeroStatsSettings and HeroStatsSettings.overallData then
+                local overallHealer = HeroStats_GetOrCreateProfile(HeroStatsSettings.overallData, destGUID, cleanDestName, healerClass)
                 overallHealer.deaths = overallHealer.deaths + 1
             end
             coreFrame.RefreshStats()
@@ -840,7 +840,6 @@ local function OnEvent_UNIT_DIED(eventType, sourceGUID, sourceName, sourceFlags,
     end
 end;
 
---  DISPEL TRACKING ENGINE (Runs out-of-combat!)
 --  DISPEL TRACKING ENGINE (Runs out-of-combat!)
 local function OnEvent_DISPELL(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags)
     local isCasterGroupMember = (sourceGUID == playerGUID) or
@@ -855,10 +854,9 @@ local function OnEvent_DISPELL(eventType, sourceGUID, sourceName, sourceFlags, d
         healerClass = healerClass or "UNKNOWN"
             
         if ALLOWED_CLASSES[healerClass] then
-            -- Safely query the active kampsession table array
-            local sessionHealers = HealSmart_GetActiveSessionHealers()
+            local sessionHealers = HeroStats_GetActiveSessionHealers()
             if sessionHealers then
-                local healer = HealSmart_GetOrCreateProfile(sessionHealers, sourceGUID, cleanSourceName, healerClass)
+                local healer = HeroStats_GetOrCreateProfile(sessionHealers, sourceGUID, cleanSourceName, healerClass)
                 
                 -- Update master totals
                 healer.dispels = (healer.dispels or 0) + 1
@@ -870,8 +868,8 @@ local function OnEvent_DISPELL(eventType, sourceGUID, sourceName, sourceFlags, d
                     healer.spellDispels[dispelSpellName] = (healer.spellDispels[dispelSpellName] or 0) + 1
                 end
                     
-                if HealSmartSettings and HealSmartSettings.overallData then
-                    local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanSourceName, healerClass)
+                if HeroStatsSettings and HeroStatsSettings.overallData then
+                    local overallHealer = HeroStats_GetOrCreateProfile(HeroStatsSettings.overallData, sourceGUID, cleanSourceName, healerClass)
                     overallHealer.dispels = (overallHealer.dispels or 0) + 1
                     
                     if dispelSpellName then
@@ -896,11 +894,11 @@ local function OnEvent_RESURRECT(eventType, sourceGUID, sourceName, sourceFlags,
         local healerClass = groupRosterCache[cleanSourceName] or "UNKNOWN"
             
         if healerClass and ALLOWED_CLASSES[healerClass] then
-            local healer = HealSmart_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, healerClass)
+            local healer = HeroStats_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, healerClass)
             healer.resurrects = healer.resurrects + 1
                 
-            if HealSmartSettings and HealSmartSettings.overallData then
-                local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, sourceGUID, cleanSourceName, healerClass)
+            if HeroStatsSettings and HeroStatsSettings.overallData then
+                local overallHealer = HeroStats_GetOrCreateProfile(HeroStatsSettings.overallData, sourceGUID, cleanSourceName, healerClass)
                 overallHealer.resurrects = overallHealer.resurrects + 1
             end
             coreFrame.RefreshStats()
@@ -929,9 +927,9 @@ local function OnEvent_MANAGAINS(eventType, sourceGUID, sourceName, sourceFlags,
             destClass = destClass or "UNKNOWN"
 
             if ALLOWED_CLASSES[destClass] then
-                local sessionHealers = HealSmart_GetActiveSessionHealers()
+                local sessionHealers = HeroStats_GetActiveSessionHealers()
                 if sessionHealers then
-                    local profile = HealSmart_GetOrCreateProfile(sessionHealers, destGUID, cleanDestName, destClass)
+                    local profile = HeroStats_GetOrCreateProfile(sessionHealers, destGUID, cleanDestName, destClass)
                     profile.manaGained = (profile.manaGained or 0) + amount
                     
                     if spellName then
@@ -939,8 +937,8 @@ local function OnEvent_MANAGAINS(eventType, sourceGUID, sourceName, sourceFlags,
                         profile.spellManaGained[spellName] = (profile.spellManaGained[spellName] or 0) + amount
                     end
 
-                    if HealSmartSettings and HealSmartSettings.overallData then
-                        local overallProfile = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, destGUID, cleanDestName, destClass)
+                    if HeroStatsSettings and HeroStatsSettings.overallData then
+                        local overallProfile = HeroStats_GetOrCreateProfile(HeroStatsSettings.overallData, destGUID, cleanDestName, destClass)
                         overallProfile.manaGained = (overallProfile.manaGained or 0) + amount
                         
                         if spellName then
@@ -962,17 +960,17 @@ local function OnEvent_AURA(eventType, sourceGUID, sourceName, sourceFlags, dest
         
         if buffName == "Epiphany" then
             -- SAFETY GATE: Only log the 500 mana if a valid fight session dataset is actively running!
-            local sessionHealers = HealSmart_GetActiveSessionHealers()
+            local sessionHealers = HeroStats_GetActiveSessionHealers()
             if sessionHealers then
                 local _, playerClass = UnitClass("player")
-                local healer = HealSmart_GetOrCreateProfile(sessionHealers, playerGUID, "Mimma", playerClass or "PRIEST")
+                local healer = HeroStats_GetOrCreateProfile(sessionHealers, playerGUID, "Unknown", playerClass or "UNKNOWN")
                 
                 healer.manaGained = (healer.manaGained or 0) + 500
                 if not healer.spellManaGained then healer.spellManaGained = {} end
                 healer.spellManaGained["Epiphany"] = (healer.spellManaGained["Epiphany"] or 0) + 500
                 
-                if HealSmartSettings and HealSmartSettings.overallData then
-                    local overallHealer = HealSmart_GetOrCreateProfile(HealSmartSettings.overallData, playerGUID, "Mimma", playerClass or "PRIEST")
+                if HeroStatsSettings and HeroStatsSettings.overallData then
+                    local overallHealer = HeroStats_GetOrCreateProfile(HeroStatsSettings.overallData, playerGUID, "Unknown", playerClass or "UNKNOWN")
                     overallHealer.manaGained = (overallHealer.manaGained or 0) + 500
                     if not overallHealer.spellManaGained then overallHealer.spellManaGained = {} end
                     overallHealer.spellManaGained["Epiphany"] = (overallHealer.spellManaGained["Epiphany"] or 0) + 500
@@ -985,7 +983,7 @@ end;
 
 local function OnCombatLogEvent()
     -- Fetch the active writing sub-table for the current active fight session
-    activeHealers = HealSmart_GetActiveSessionHealers()
+    activeHealers = HeroStats_GetActiveSessionHealers()
     if not activeHealers then return end
 
     local timestamp, eventType, hideCaster, sourceGUID, sourceName, sourceFlags, sourceRaidFlags, destGUID, destName, destFlags, destRaidFlags = CombatLogGetCurrentEventInfo()
@@ -1026,34 +1024,34 @@ local function OnCombatLogEvent()
 end
 
 -- ==========================================
--- HealSmart - Core Engine (v0.6.0) - PART 3B
+-- HeroStats - Core Engine (v0.6.0) - PART 3B
 -- ==========================================
 
 -- NEW SESSION GENERATOR PIPELINE: Runs securely when pulling threat / entering combat
-local function HealSmart_CreateNewSession()
-    if not HealSmartSettings or not HealSmartSettings.sessions then return end
+local function HeroStats_CreateNewSession()
+    if not HeroStatsSettings or not HeroStatsSettings.sessions then return end
     
-    HealSmartSettings.activeSessionID = (HealSmartSettings.activeSessionID or 0) + 1
+    HeroStatsSettings.activeSessionID = (HeroStatsSettings.activeSessionID or 0) + 1
     
     local zoneName = GetZoneText() or "Unknown Area"
     local encounterName = UnitName("target") or "Trash Mob"
     local sessionName = encounterName .. " (" .. zoneName .. ")"
     
     local newSessionBlock = {
-        id = HealSmartSettings.activeSessionID,
+        id = HeroStatsSettings.activeSessionID,
         name = sessionName,
         healers = {}
     }
     
-    table.insert(HealSmartSettings.sessions, newSessionBlock)
-    HealSmartSettings.activeSessionIndex = #HealSmartSettings.sessions
+    table.insert(HeroStatsSettings.sessions, newSessionBlock)
+    HeroStatsSettings.activeSessionIndex = #HeroStatsSettings.sessions
     
     -- FIFO REMOVAL BARRIER: Delete oldest session if inventory list hits 21 slots
-    if #HealSmartSettings.sessions > HEALSMART_MAX_SAVED_SESSIONS then
-        table.remove(HealSmartSettings.sessions, 1)
-        HealSmartSettings.activeSessionIndex = #HealSmartSettings.sessions
+    if #HeroStatsSettings.sessions > HEROSTATS_MAX_SAVED_SESSIONS then
+        table.remove(HeroStatsSettings.sessions, 1)
+        HeroStatsSettings.activeSessionIndex = #HeroStatsSettings.sessions
     end
-    end
+end
 
 coreFrame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
 coreFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
@@ -1068,9 +1066,9 @@ coreFrame:SetScript("OnEvent", function(self, event, ...)
         inTrueCombat = true
         timeSinceCombatEnd = 0
         -- FIXED v0.8.0: Reset the precise fight duration clock on pull
-        HealSmart_CurrentFightDuration = 0
+        HeroStats_CurrentFightDuration = 0
         if not isSessionActive then
-            HealSmart_CreateNewSession()
+            HeroStats_CreateNewSession()
             isSessionActive = true
             coreFrame.RefreshStats()
         end
@@ -1082,13 +1080,13 @@ coreFrame:SetScript("OnEvent", function(self, event, ...)
         
         local currentlyInGroup = IsInGroup() or IsInRaid()
         if currentlyInGroup and not wasInGroupLastCheck then
-            if HealSmartSettings and HealSmartSettings.groupJoinBehavior then
-                local behavior = HealSmartSettings.groupJoinBehavior
+            if HeroStatsSettings and HeroStatsSettings.groupJoinBehavior then
+                local behavior = HeroStatsSettings.groupJoinBehavior
                 if behavior == 1 then
-                    HealSmart_ExecuteMasterWipeData()
-                    if HealSmart_Print then HealSmart_Print("Automatically cleared history due to group join settings.") end
+                    HeroStats_ExecuteMasterWipeData()
+                    if HeroStats_Print then HeroStats_Print("Automatically cleared history due to group join settings.") end
                 elseif behavior == 3 then
-                    StaticPopup_Show("HEALSMART_GROUP_JOIN_PROMPT")
+                    StaticPopup_Show("HEROSTATS_GROUP_JOIN_PROMPT")
                 end
             end
         end
@@ -1105,7 +1103,7 @@ coreFrame:SetScript("OnUpdate", function(self, elapsed)
         totalElapsed = totalElapsed + elapsed
         -- Every time 1 full second passes, tick the master combat clock up by 1
         if totalElapsed >= 1 then
-            HealSmart_CurrentFightDuration = (HealSmart_CurrentFightDuration or 0) + 1
+            HeroStats_CurrentFightDuration = (HeroStats_CurrentFightDuration or 0) + 1
             totalElapsed = 0
             
             -- Live update bars while fighting so DPS/HPS changes in real-time
@@ -1115,7 +1113,7 @@ coreFrame:SetScript("OnUpdate", function(self, elapsed)
     
     if isSessionActive and not inTrueCombat then
         timeSinceCombatEnd = timeSinceCombatEnd + elapsed
-        if timeSinceCombatEnd >= HEALSMART_OUT_OF_COMBAT_GRACE then
+        if timeSinceCombatEnd >= HEROSTATS_OUT_OF_COMBAT_GRACE then
             isSessionActive = false
             -- Combat fully finalized, stats are safely written inside SavedVariables array
         end
@@ -1123,38 +1121,38 @@ coreFrame:SetScript("OnUpdate", function(self, elapsed)
 end)
 
 -- ==========================================
--- HealSmart - Core Engine (v0.6.0 Multi-Session) - PART 4
+-- HeroStats - Core Engine (v0.6.0 Multi-Session) - PART 4
 -- ==========================================
 
 -- Global initialization interface running across layout load hooks
-function HealSmart_SetInitialPage(savedPage)
-    HealSmart_CurrentActivePage = savedPage
+function HeroStats_SetInitialPage(savedPage)
+    HeroStats_CurrentActivePage = savedPage
     
     -- Structure validation: Ensure multi-session databases exist upon login
-    if HealSmartSettings then
-        if not HealSmartSettings.sessions then
-            HealSmartSettings.sessions = {}
+    if HeroStatsSettings then
+        if not HeroStatsSettings.sessions then
+            HeroStatsSettings.sessions = {}
         end
-        if not HealSmartSettings.activeSessionID then
-            HealSmartSettings.activeSessionID = 0
+        if not HeroStatsSettings.activeSessionID then
+            HeroStatsSettings.activeSessionID = 0
         end
-        if not HealSmartSettings.activeSessionIndex then
-            HealSmartSettings.activeSessionIndex = 1
+        if not HeroStatsSettings.activeSessionIndex then
+            HeroStatsSettings.activeSessionIndex = 1
         end
-        if not HealSmartSettings.overallData then
-            HealSmartSettings.overallData = {}
+        if not HeroStatsSettings.overallData then
+            HeroStatsSettings.overallData = {}
         end
         
         -- Create a baseline starter session block if the history log is completely empty
-        if #HealSmartSettings.sessions == 0 then
+        if #HeroStatsSettings.sessions == 0 then
             local zoneName = GetZoneText() or "Azeroth"
-            HealSmartSettings.activeSessionID = 1
-            HealSmartSettings.sessions[1] = {
+            HeroStatsSettings.activeSessionID = 1
+            HeroStatsSettings.sessions[1] = {
                 id = 1,
                 name = "Startup Session (" .. zoneName .. ")",
                 healers = {}
             }
-            HealSmartSettings.activeSessionIndex = 1
+            HeroStatsSettings.activeSessionIndex = 1
         end
     end
     
@@ -1162,55 +1160,55 @@ function HealSmart_SetInitialPage(savedPage)
     if coreFrame.RefreshStats then coreFrame.RefreshStats() end
 end
 
-function HealSmart_RefreshCurrentPage()
+function HeroStats_RefreshCurrentPage()
     if coreFrame.RefreshStats then coreFrame.RefreshStats() end
 end
 
 
 -- ==========================================
--- HealSmart - Core Engine (v0.7.0) - PART 4A (Reset & Group Popups)
+-- HeroStats - Core Engine (v0.7.0) - PART 4A (Reset & Group Popups)
 -- ==========================================
 
 -- NEW MASTER WIPE ENGINE: Complete hard-reset of all cached data arrays and night totals
-function HealSmart_ExecuteMasterWipeData()
-    if not HealSmartSettings then return end
+function HeroStats_ExecuteMasterWipeData()
+    if not HeroStatsSettings then return end
     
     -- 1. Purge all structural data pipelines permanently
-    HealSmartSettings.sessions = {}
-    HealSmartSettings.overallData = {}
-    HealSmartSettings.activeSessionID = 1
-    HealSmartSettings.activeSessionIndex = 1
+    HeroStatsSettings.sessions = {}
+    HeroStatsSettings.overallData = {}
+    HeroStatsSettings.activeSessionID = 1
+    HeroStatsSettings.activeSessionIndex = 1
     
     -- 2. Build a fresh baseline starter fight block to prevent empty array nil crashes
     local zoneName = GetZoneText() or "Azeroth"
-    HealSmartSettings.sessions[1] = {
+    HeroStatsSettings.sessions[1] = {
         id = 1,
         name = "Startup Session (" .. zoneName .. ")",
         healers = {}
     }
     
     -- 3. Reset the global display viewport back to show the fresh current fight slot
-    HealSmart_SelectedViewSessionID = 0
+    HeroStats_SelectedViewSessionID = 0
     
     -- 4. Flush the main window canvas completely and redraw the empty state
-    if HealSmart_ClearDisplay then HealSmart_ClearDisplay() end
+    if HeroStats_ClearDisplay then HeroStats_ClearDisplay() end
     if coreFrame and coreFrame.RefreshStats then coreFrame.RefreshStats() end
     
     -- 5. Force update the historic session dropdown window cache if it happens to be open
-    if HealSmart_UpdateSessionListWindow then HealSmart_UpdateSessionListWindow() end
+    if HeroStats_UpdateSessionListWindow then HeroStats_UpdateSessionListWindow() end
     
-    if HealSmart_Print then
-        HealSmart_Print("All combat session logs and Overall Raid Totals have been successfully wiped.")
+    if HeroStats_Print then
+        HeroStats_Print("All combat session logs and Overall Raid Totals have been successfully wiped.")
     end
 end
 
 -- NEW: Official Blizzard Static Popup Specification for automated Group Join promptings
-StaticPopupDialogs["HEALSMART_GROUP_JOIN_PROMPT"] = {
+StaticPopupDialogs["HEROSTATS_GROUP_JOIN_PROMPT"] = {
     text = "You have joined a new Group or Raid. Do you want to wipe your previous fight history?",
     button1 = "Yes, Start Fresh",
     button2 = "No, Keep Data",
     OnAccept = function()
-        HealSmart_ExecuteMasterWipeData()
+        HeroStats_ExecuteMasterWipeData()
     end,
     timeout = 0,
     whileDead = true,
@@ -1219,10 +1217,10 @@ StaticPopupDialogs["HEALSMART_GROUP_JOIN_PROMPT"] = {
 }
 
 -- global callback bridge enabling the UI loader ticker to query background states
-HealSmart_SetInitialPage(HealSmartSettings and HealSmartSettings.page or 0)
+HeroStats_SetInitialPage(HeroStatsSettings and HeroStatsSettings.page or 0)
 
 -- ==========================================
--- HealSmart - Core Engine (v0.7.0) - PART 3B (Group-Join Listener)
+-- HeroStats - Core Engine (v0.7.0) - PART 3B (Group-Join Listener)
 -- ==========================================
 
 -- Runtime guard flag to track your previous grouping state across checks securely
@@ -1235,7 +1233,7 @@ coreFrame:SetScript("OnEvent", function(self, event, ...)
         inTrueCombat = true
         timeSinceCombatEnd = 0
         if not isSessionActive then
-            HealSmart_CreateNewSession()
+            HeroStats_CreateNewSession()
             isSessionActive = true
             coreFrame.RefreshStats()
         end
@@ -1250,18 +1248,18 @@ coreFrame:SetScript("OnEvent", function(self, event, ...)
         
         -- Trigger point: Fires ONLY when transitioning from solo player to group member
         if currentlyInGroup and not wasInGroupLastCheck then
-            if HealSmartSettings and HealSmartSettings.groupJoinBehavior then
-                local behavior = HealSmartSettings.groupJoinBehavior
+            if HeroStatsSettings and HeroStatsSettings.groupJoinBehavior then
+                local behavior = HeroStatsSettings.groupJoinBehavior
                 
                 if behavior == 1 then
                     -- Option 1: Hard wipe instantly without prompting
-                    HealSmart_ExecuteMasterWipeData()
-                    if HealSmart_Print then HealSmart_Print("Automatically cleared history due to group join settings.") end
+                    HeroStats_ExecuteMasterWipeData()
+                    if HeroStats_Print then HeroStats_Print("Automatically cleared history due to group join settings.") end
                 elseif behavior == 2 then
                     -- Option 2: Keep data silently and do absolutely nothing
                 elseif behavior == 3 then
                     -- Option 3: Fire Blizzards popup confirmation window framework
-                    StaticPopup_Show("HEALSMART_GROUP_JOIN_PROMPT")
+                    StaticPopup_Show("HEROSTATS_GROUP_JOIN_PROMPT")
                 end
             end
         end
@@ -1274,14 +1272,14 @@ end)
 UpdateGroupRosterCache()
 
 -- ==========================================
--- HealSmart - Core Engine (v0.7.0 Chat Exporter)
+-- HeroStats - Core Engine (v0.7.0 Chat Exporter)
 -- ==========================================
 
-function HealSmart_ReportCurrentPageToChat()
+function HeroStats_ReportCurrentPageToChat()
     if not sortedHealers or #sortedHealers == 0 then return end
-    if not HealSmartSettings then return end
+    if not HeroStatsSettings then return end
 
-    local mode = HealSmartSettings.reportChannelMode or 1
+    local mode = HeroStatsSettings.reportChannelMode or 1
     local channelType = "SAY"
     local channelNum = nil
     local isSoloWhisperLoop = false
@@ -1300,24 +1298,24 @@ function HealSmart_ReportCurrentPageToChat()
     elseif mode == 4 then channelType = "GUILD"
     elseif mode == 5 then 
         channelType = "CHANNEL" 
-        channelNum = HealSmartSettings.reportCustomChannelNum or 1
+        channelNum = HeroStatsSettings.reportCustomChannelNum or 1
     end
 
-    local maxLines = HealSmartSettings.reportLinesLimit or 5
+    local maxLines = HeroStatsSettings.reportLinesLimit or 5
     local linesToPost = math.min(maxLines, #sortedHealers)
     if linesToPost <= 0 then return end
 
     -- FIXED v0.8.0: Data-driven title extraction safely mapped via your 1-based lookupFramework
-    local pageRecord = HealSmart_GetPageRecord(HealSmart_CurrentActivePage)
-    local baseTitle = pageRecord and pageRecord.title or "HealSmart Stats"
+    local pageRecord = HeroStats_GetPageRecord(HeroStats_CurrentActivePage)
+    local baseTitle = pageRecord and pageRecord.title or "HeroStats"
     local pageName = pageRecord and pageRecord.name;
     if pageName =="FRONTPAGE" then return; end;
     
     -- Execute Text Outputs
     if isSoloWhisperLoop then
-        if HealSmart_Print then HealSmart_Print("=== " .. baseTitle .. " ===") end
+        if HeroStats_Print then HeroStats_Print("=== " .. baseTitle .. " ===") end
     else
-        SendChatMessage("=== HealSmart: " .. baseTitle .. " ===", channelType, nil, channelNum)
+        SendChatMessage("=== HeroStats: " .. baseTitle .. " ===", channelType, nil, channelNum)
     end
 
     for i = 1, linesToPost do
@@ -1354,7 +1352,7 @@ function HealSmart_ReportCurrentPageToChat()
 
             if lineMessage ~= "" then
                 if isSoloWhisperLoop then
-                    if HealSmart_Print then HealSmart_Print(lineMessage) end
+                    if HeroStats_Print then HeroStats_Print(lineMessage) end
                 else
                     SendChatMessage(lineMessage, channelType, nil, channelNum)
                 end
@@ -1363,4 +1361,4 @@ function HealSmart_ReportCurrentPageToChat()
     end
 end
 
--- end healsmartcore.lua
+-- end herostatscore.lua

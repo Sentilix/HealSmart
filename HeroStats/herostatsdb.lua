@@ -1,10 +1,10 @@
 -- ==========================================
--- HealSmart - Global Constants & Database
+-- HeroStats - Global Constants & Database
 -- ==========================================
 
 -- Unified data-driven page routing framework v0.8.0
-HealSmart_Pages = {
-    [1]  = { name = "FRONTPAGE",     title = "1. HealSmart" },
+HeroStats_Pages = {
+    [1]  = { name = "FRONTPAGE",     title = "1. HeroStats" },
     [2]  = { name = "DAMAGE_DONE",   title = "2. Damage Done" },
     [3]  = { name = "DAMAGE_TAKEN",  title = "3. Damage Taken" },
     [4]  = { name = "HEALING",       title = "4. Healing Done" },
@@ -17,7 +17,7 @@ HealSmart_Pages = {
     [11]  = { name = "RESURRECTS",   title = "11. Resurrects Cast" }
 }
 
-HealSmart_SpellCostDB = {
+HeroStats_SpellCostDB = {
     -- --- PRIEST ---
     -- Flash Heal
     [2061] = { class = "PRIEST", cost = 125 }, -- Rank 1
@@ -187,12 +187,12 @@ HealSmart_SpellCostDB = {
 
 
 -- Global lookup utility to retrieve the factual page record configuration
-function HealSmart_GetPageRecord(pageIndex)
-    if not pageIndex then pageIndex = HealSmart_CurrentActivePage or 1 end
+function HeroStats_GetPageRecord(pageIndex)
+    if not pageIndex then pageIndex = HeroStats_CurrentActivePage or 1 end
     
     -- Fallback safety boundaries
     if pageIndex < 1 then pageIndex = 1 end
     
-    return HealSmart_Pages[pageIndex] or HealSmart_Pages[1]
+    return HeroStats_Pages[pageIndex] or HeroStats_Pages[1]
 end
 

@@ -1,5 +1,19 @@
 # HeroStats Changelog
 
+# Changelog - HeroStats v0.9.0
+
+## [Added]
+- Added: Numbers in front of names (1. Arne, 2. Børge) on all bars.
+- Added: Class colors on the player names inside tooltips.
+- Added: Server names are now always glued onto the player names.
+- Added: Extended tooltips to show a full Top 10 list instead of 8.
+
+## [Changed]
+- Changed: Renamed the entire addon from HealSmart to HeroStats.
+- Changed: Overhealing page flipped to show "Efficiency" from highest to lowest.
+- Changed: The fight timer now automatically saves the length of your old fights.
+- Changed: Icon update (Report button is now a chat bubble, Settings is a note list).
+
 # Changelog - HealSmart v0.8.0
 
 ## [Added]

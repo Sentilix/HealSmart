@@ -1,23 +1,25 @@
 -- ==========================================
--- HealSmart - Interface Options Config Panel (v0.7.0)
+-- HeroStats - Interface Options Config Panel (v0.7.0)
 -- ==========================================
 
-local configPanel = CreateFrame("Frame", "HealSmartConfigPanel", UIParent)
-configPanel.name = "HealSmart"
+local configPanel = CreateFrame("Frame", "HeroStatsConfigPanel", UIParent)
+configPanel.name = "HeroStats"
 
 -- Fetch the version string directly from the .toc metadata sheet
-local addonVersion = C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata("HealSmart", "Version") or "0.7.0"
+local addonVersion = C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata("HeroStats", "Version") or "0.7.0"
 
 -- Create Credits Header Text
 local creditsText = configPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+local addonVersion = C_AddOns and C_AddOns.GetAddOnMetadata("HeroStats", "Version") or "(Unknown)"
+local addonAuthor = C_AddOns and C_AddOns.GetAddOnMetadata("HeroStats", "Author") or "mimma"
 creditsText:SetPoint("TOPLEFT", 16, -6)
-creditsText:SetText("HealSmart v" .. addonVersion .. " - by mimma @ EU-Pyrewood Village")
+creditsText:SetText("HeroStats v" .. addonVersion .. " - by " .. addonAuthor)
 creditsText:SetTextColor(0.75, 0.75, 0.75, 1.0)
 
 -- Create Title Layout Text
 local title = configPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
 title:SetPoint("TOPLEFT", creditsText, "BOTTOMLEFT", 0, -14)
-title:SetText("HealSmart Configuration")
+title:SetText("HeroStats Configuration")
 
 local subText = configPanel:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 subText:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
@@ -45,12 +47,12 @@ local function CreateRadioButton(name, text, yOffset)
     return cb
 end
 
-local cbDelete = CreateRadioButton("HealSmartCBDelete", "Automatically clear all history", -10)
-local cbKeep   = CreateRadioButton("HealSmartCBKeep", "Keep history and accumulate data", -35)
-local cbAsk    = CreateRadioButton("HealSmartCBAsk", "Prompt me with a popup dialog", -60)
+local cbDelete = CreateRadioButton("HeroStatsCBDelete", "Automatically clear all history", -10)
+local cbKeep   = CreateRadioButton("HeroStatsCBKeep", "Keep history and accumulate data", -35)
+local cbAsk    = CreateRadioButton("HeroStatsCBAsk", "Prompt me with a popup dialog", -60)
 
 -- Right Column: Max Saved Sessions Slider (Shifted 300px right)
-local slider = CreateFrame("Slider", "HealSmartSessionSlider", configPanel, "OptionsSliderTemplate")
+local slider = CreateFrame("Slider", "HeroStatsSessionSlider", configPanel, "OptionsSliderTemplate")
 slider:SetPoint("TOPLEFT", subText, "BOTTOMLEFT", 300, -45)
 slider:SetMinMaxValues(5, 100)
 slider:SetValueStep(1)
@@ -92,13 +94,13 @@ local function CreateChatRadioButton(name, text, yOffset)
     return cb
 end
 
-local cbAuto   = CreateChatRadioButton("HealSmartCBAuto", "/Raid or /Party (Instance)", -10)
-local cbSay    = CreateChatRadioButton("HealSmartCBSay", "/say (Local Zone)", -35)
-local cbYell   = CreateChatRadioButton("HealSmartCBYell", "/yell (Shout out loud)", -60)
-local cbGuild  = CreateChatRadioButton("HealSmartCBGuild", "/guild (Guild members)", -85)
-local cbCustom = CreateChatRadioButton("HealSmartCBCustom", "Custom Channel Number:", -110)
+local cbAuto   = CreateChatRadioButton("HeroStatsCBAuto", "/Raid or /Party (Instance)", -10)
+local cbSay    = CreateChatRadioButton("HeroStatsCBSay", "/say (Local Zone)", -35)
+local cbYell   = CreateChatRadioButton("HeroStatsCBYell", "/yell (Shout out loud)", -60)
+local cbGuild  = CreateChatRadioButton("HeroStatsCBGuild", "/guild (Guild members)", -85)
+local cbCustom = CreateChatRadioButton("HeroStatsCBCustom", "Custom Channel Number:", -110)
 
-local customChannelBox = CreateFrame("EditBox", "HealSmartCustomChannelBox", configPanel, "InputBoxTemplate")
+local customChannelBox = CreateFrame("EditBox", "HeroStatsCustomChannelBox", configPanel, "InputBoxTemplate")
 customChannelBox:SetSize(40, 20)
 customChannelBox:SetPoint("LEFT", _G[cbCustom:GetName() .. "Text"], "RIGHT", 15, 0)
 customChannelBox:SetAutoFocus(false)
@@ -106,7 +108,7 @@ customChannelBox:SetMaxLetters(3)
 customChannelBox:SetNumeric(true)
 
 -- Right Column: Max Report Lines Slider (Shifted 220px right, aligned with row 2 title)
-local linesSlider = CreateFrame("Slider", "HealSmartLinesSlider", configPanel, "OptionsSliderTemplate")
+local linesSlider = CreateFrame("Slider", "HeroStatsLinesSlider", configPanel, "OptionsSliderTemplate")
 linesSlider:SetPoint("TOPLEFT", chatLabel, "TOPLEFT", 300, -15)
 linesSlider:SetMinMaxValues(1, 10)
 linesSlider:SetValueStep(1)
@@ -135,7 +137,7 @@ local function SyncGroupRadioButtons(selectedMode)
     cbDelete:SetChecked(selectedMode == 1)
     cbKeep:SetChecked(selectedMode == 2)
     cbAsk:SetChecked(selectedMode == 3)
-    if HealSmartSettings then HealSmartSettings.groupJoinBehavior = selectedMode end
+    if HeroStatsSettings then HeroStatsSettings.groupJoinBehavior = selectedMode end
 end
 
 cbDelete:SetScript("OnClick", function() SyncGroupRadioButtons(1) end)
@@ -145,9 +147,9 @@ cbAsk:SetScript("OnClick", function() SyncGroupRadioButtons(3) end)
 slider:SetScript("OnValueChanged", function(self, value)
     local roundedValue = math.floor(value + 0.5)
     valueText:SetText(tostring(roundedValue))
-    if HealSmartSettings then
-        HealSmartSettings.maxSessionsLimit = roundedValue
-        HEALSMART_MAX_SAVED_SESSIONS = roundedValue
+    if HeroStatsSettings then
+        HeroStatsSettings.maxSessionsLimit = roundedValue
+        HEROSTATS_MAX_SAVED_SESSIONS = roundedValue
     end
 end)
 
@@ -159,7 +161,7 @@ local function SyncChatRadioButtons(selectedChannelMode)
     cbCustom:SetChecked(selectedChannelMode == 5)
     
     if selectedChannelMode == 5 then customChannelBox:Show() else customChannelBox:Hide() customChannelBox:ClearFocus() end
-    if HealSmartSettings then HealSmartSettings.reportChannelMode = selectedChannelMode end
+    if HeroStatsSettings then HeroStatsSettings.reportChannelMode = selectedChannelMode end
 end
 
 cbAuto:SetScript("OnClick", function() SyncChatRadioButtons(1) end)
@@ -170,20 +172,20 @@ cbCustom:SetScript("OnClick", function() SyncChatRadioButtons(5) end)
 
 customChannelBox:SetScript("OnTextChanged", function(self)
     local textNum = tonumber(self:GetText()) or 1
-    if HealSmartSettings then HealSmartSettings.reportCustomChannelNum = textNum end
+    if HeroStatsSettings then HeroStatsSettings.reportCustomChannelNum = textNum end
 end)
 
 linesSlider:SetScript("OnValueChanged", function(self, value)
     local roundedValue = math.floor(value + 0.5)
     linesValueText:SetText(tostring(roundedValue))
-    if HealSmartSettings then HealSmartSettings.reportLinesLimit = roundedValue end
+    if HeroStatsSettings then HeroStatsSettings.reportLinesLimit = roundedValue end
 end)
 
 -- Register the completed frame panel into Blizzards Addon Options sub-menu hierarchy
 if Settings and Settings.RegisterCanvasLayoutCategory then
     local category = Settings.RegisterCanvasLayoutCategory(configPanel, configPanel.name)
     Settings.RegisterAddOnCategory(category)
-    HealSmart_ConfigCategoryID = category:GetID()
+    HeroStats_ConfigCategoryID = category:GetID()
 else
     InterfaceOptions_AddCategory(configPanel)
 end
@@ -192,24 +194,24 @@ end
 local configLoader = CreateFrame("Frame")
 configLoader:RegisterEvent("ADDON_LOADED")
 configLoader:SetScript("OnEvent", function(self, event, addonName)
-    if addonName == "HealSmart" then
-        if HealSmartSettings then
-            if not HealSmartSettings.maxSessionsLimit then HealSmartSettings.maxSessionsLimit = 20 end
-            if not HealSmartSettings.groupJoinBehavior then HealSmartSettings.groupJoinBehavior = 3 end
-            if not HealSmartSettings.reportChannelMode then HealSmartSettings.reportChannelMode = 1 end
-            if not HealSmartSettings.reportCustomChannelNum then HealSmartSettings.reportCustomChannelNum = 1 end
-            if not HealSmartSettings.reportLinesLimit then HealSmartSettings.reportLinesLimit = 5 end
+    if addonName == "HeroStats" then
+        if HeroStatsSettings then
+            if not HeroStatsSettings.maxSessionsLimit then HeroStatsSettings.maxSessionsLimit = 20 end
+            if not HeroStatsSettings.groupJoinBehavior then HeroStatsSettings.groupJoinBehavior = 3 end
+            if not HeroStatsSettings.reportChannelMode then HeroStatsSettings.reportChannelMode = 1 end
+            if not HeroStatsSettings.reportCustomChannelNum then HeroStatsSettings.reportCustomChannelNum = 1 end
+            if not HeroStatsSettings.reportLinesLimit then HeroStatsSettings.reportLinesLimit = 5 end
             
-            slider:SetValue(HealSmartSettings.maxSessionsLimit)
-            linesSlider:SetValue(HealSmartSettings.reportLinesLimit)
-            HEALSMART_MAX_SAVED_SESSIONS = HealSmartSettings.maxSessionsLimit
+            slider:SetValue(HeroStatsSettings.maxSessionsLimit)
+            linesSlider:SetValue(HeroStatsSettings.reportLinesLimit)
+            HEROSTATS_MAX_SAVED_SESSIONS = HeroStatsSettings.maxSessionsLimit
             
-            SyncGroupRadioButtons(HealSmartSettings.groupJoinBehavior)
-            SyncChatRadioButtons(HealSmartSettings.reportChannelMode)
-            customChannelBox:SetText(tostring(HealSmartSettings.reportCustomChannelNum))
+            SyncGroupRadioButtons(HeroStatsSettings.groupJoinBehavior)
+            SyncChatRadioButtons(HeroStatsSettings.reportChannelMode)
+            customChannelBox:SetText(tostring(HeroStatsSettings.reportCustomChannelNum))
         end
         self:UnregisterEvent("ADDON_LOADED")
     end
 end)
 
--- end healsmartconfig.lua
+-- end herostatsconfig.lua

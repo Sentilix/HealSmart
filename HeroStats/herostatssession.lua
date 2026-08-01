@@ -1,8 +1,8 @@
 -- ==========================================
--- HealSmart - Session Selection Window Frame (v0.6.0)
+-- HeroStats - Session Selection Window Frame (v0.6.0)
 -- ==========================================
 
-local sessionFrame = CreateFrame("Frame", "HealSmartSessionFrame", UIParent)
+local sessionFrame = CreateFrame("Frame", "HeroStatsSessionFrame", UIParent)
 sessionFrame:SetSize(220, 200) -- Expanded width to 220px to hold full zone names cleanly
 sessionFrame:SetClampedToScreen(true)
 sessionFrame:Hide() 
@@ -33,17 +33,17 @@ sfClose:SetSize(16, 16)
 sfClose:SetPoint("RIGHT", sfHeader, "RIGHT", -2, 0)
 sfClose:SetScript("OnClick", function() sessionFrame:Hide() end)
 
-local sfScrollFrame = CreateFrame("ScrollFrame", "HealSmartSFScrollFrame", sessionFrame, "UIPanelScrollFrameTemplate")
+local sfScrollFrame = CreateFrame("ScrollFrame", "HeroStatsSFScrollFrame", sessionFrame, "UIPanelScrollFrameTemplate")
 sfScrollFrame:SetPoint("TOPLEFT", sfHeader, "BOTTOMLEFT", 0, -2)
 sfScrollFrame:SetPoint("BOTTOMRIGHT", sessionFrame, "BOTTOMRIGHT", -20, 4)
 
-if HealSmartSFScrollFrameScrollBar then
-    local sfsb = HealSmartSFScrollFrameScrollBar
+if HeroStatsSFScrollFrameScrollBar then
+    local sfsb = HeroStatsSFScrollFrameScrollBar
     sfsb:ClearAllPoints()
     sfsb:SetPoint("TOPRIGHT", sessionFrame, "TOPRIGHT", -2, -24)
     sfsb:SetPoint("BOTTOMRIGHT", sessionFrame, "BOTTOMRIGHT", -2, 4)
-    if HealSmartSFScrollFrameScrollBarScrollUpButton then HealSmartSFScrollFrameScrollBarScrollUpButton:Hide() end
-    if HealSmartSFScrollFrameScrollBarScrollDownButton then HealSmartSFScrollFrameScrollBarScrollDownButton:Hide() end
+    if HeroStatsSFScrollFrameScrollBarScrollUpButton then HeroStatsSFScrollFrameScrollBarScrollUpButton:Hide() end
+    if HeroStatsSFScrollFrameScrollBarScrollDownButton then HeroStatsSFScrollFrameScrollBarScrollDownButton:Hide() end
 end
 
 local sfScrollChild = CreateFrame("Frame", nil, sfScrollFrame)
@@ -74,9 +74,9 @@ local function CreateSessionRow(index)
     return button
 end
 
-function HealSmart_UpdateSessionListWindow()
+function HeroStats_UpdateSessionListWindow()
     for _, btn in ipairs(sessionButtonsCache) do btn:Hide() end
-    if not HealSmartSettings then return end
+    if not HeroStatsSettings then return end
 
     local rowIdx = 1
 
@@ -84,34 +84,34 @@ function HealSmart_UpdateSessionListWindow()
     local overallBtn = sessionButtonsCache[rowIdx] or CreateSessionRow(rowIdx)
     overallBtn.titleText:SetText("[Overall Total]")
     
-    if HealSmartSettings.selectedViewSessionID == -1 then
+    if HeroStatsSettings.selectedViewSessionID == -1 then
         overallBtn.titleText:SetTextColor(1.0, 0.82, 0.0, 1.0)
     else
         overallBtn.titleText:SetTextColor(1.0, 1.0, 1.0, 1.0)
     end
     
     overallBtn:SetScript("OnClick", function()
-        HealSmartSettings.selectedViewSessionID = -1 
-        if HealSmart_RefreshCurrentPage then HealSmart_RefreshCurrentPage() end
+        HeroStatsSettings.selectedViewSessionID = -1 
+        if HeroStats_RefreshCurrentPage then HeroStats_RefreshCurrentPage() end
         sessionFrame:Hide()
     end)
     overallBtn:Show()
     rowIdx = rowIdx + 1
 
     -- Rows 2..X: Historic sessions loop
-    if HealSmartSettings.sessions then
-        for i = #HealSmartSettings.sessions, 1, -1 do
-            local sessionData = HealSmartSettings.sessions[i]
+    if HeroStatsSettings.sessions then
+        for i = #HeroStatsSettings.sessions, 1, -1 do
+            local sessionData = HeroStatsSettings.sessions[i]
             if sessionData then
                 local btn = sessionButtonsCache[rowIdx] or CreateSessionRow(rowIdx)
                 btn.titleText:SetText(sessionData.id .. ": " .. sessionData.name)
                 
-                local isCurrentLiveSlot = (i == HealSmartSettings.activeSessionIndex)
+                local isCurrentLiveSlot = (i == HeroStatsSettings.activeSessionIndex)
                 local isThisSelected = false
                 
-                if HealSmartSettings.selectedViewSessionID == 0 and isCurrentLiveSlot then
+                if HeroStatsSettings.selectedViewSessionID == 0 and isCurrentLiveSlot then
                     isThisSelected = true
-                elseif HealSmartSettings.selectedViewSessionID == sessionData.id then
+                elseif HeroStatsSettings.selectedViewSessionID == sessionData.id then
                     isThisSelected = true
                 end
                 
@@ -122,12 +122,12 @@ function HealSmart_UpdateSessionListWindow()
                 end
                 
                 btn:SetScript("OnClick", function()
-                    if i == HealSmartSettings.activeSessionIndex then
-                        HealSmartSettings.selectedViewSessionID = 0
+                    if i == HeroStatsSettings.activeSessionIndex then
+                        HeroStatsSettings.selectedViewSessionID = 0
                     else
-                        HealSmartSettings.selectedViewSessionID = sessionData.id
+                        HeroStatsSettings.selectedViewSessionID = sessionData.id
                     end
-                    if HealSmart_RefreshCurrentPage then HealSmart_RefreshCurrentPage() end
+                    if HeroStats_RefreshCurrentPage then HeroStats_RefreshCurrentPage() end
                     sessionFrame:Hide()
                 end)
                 btn:Show()
@@ -139,18 +139,18 @@ function HealSmart_UpdateSessionListWindow()
     sfScrollChild:SetHeight(rowIdx * 20)
 end
 
-function HealSmart_ToggleSessionWindow()
+function HeroStats_ToggleSessionWindow()
     if sessionFrame:IsShown() then
         sessionFrame:Hide()
     else
-        local mainContainer = _G["HealSmartContainer"]
+        local mainContainer = _G["HeroStatsContainer"]
         if mainContainer then
             sessionFrame:ClearAllPoints()
             sessionFrame:SetPoint("TOPLEFT", mainContainer, "TOPRIGHT", 4, 0)
-            HealSmart_UpdateSessionListWindow()
+            HeroStats_UpdateSessionListWindow()
             sessionFrame:Show()
         end
     end
 end
 
--- end healsmartsession.lua
+-- end herostatssession.lua
