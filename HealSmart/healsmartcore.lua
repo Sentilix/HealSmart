@@ -117,7 +117,7 @@ local function UpdateGroupRosterCache()
 end
 
 -- ==========================================
--- HealSmart - Core Engine (v0.7.0) - PART 2 (7-Page Specific Sorting)
+-- HealSmart - Core Engine (v0.8.0) - PART 2 (Zero-Value Filter Refactor)
 -- ==========================================
 
 local sortedHealers = {}
@@ -185,17 +185,41 @@ coreFrame.RefreshStats = function()
                     data.hpm = 0
                 end
 
-                table.insert(sortedHealers, data)
-                totalRaidEffective = totalRaidEffective + data.effective
-                if data.effective > topHealerAmount then topHealerAmount = data.effective end
-                if data.dispels > topDispelValue then topDispelValue = data.dispels end
-                if data.deaths > topDeathValue then topDeathValue = data.deaths end
-                if data.resurrects > topRessValue then topRessValue = data.resurrects end
+                -- NEW INTELLIGENT FILTRATION GATEWAY: Discards baseline 0-records cleanly based on active tab context
+                local shouldInclude = false
+                
+                if HealSmart_CurrentActivePage == 1 or HealSmart_CurrentActivePage == 2 then
+                    -- Pages 1 & 2: Only show players who actually performed healing actions
+                    if data.effective > 0 or data.overheal > 0 then shouldInclude = true end
+                elseif HealSmart_CurrentActivePage == 3 then
+                    -- Page 3 (Mana): Include if they spent mana, OR if they heal > 0 with 0 mana (Clearcasting exception)
+                    if data.manaUsed > 0 or data.effective > 0 then shouldInclude = true end
+                elseif HealSmart_CurrentActivePage == 4 then
+                    -- Page 4: Dispels Done
+                    if data.dispels > 0 then shouldInclude = true end
+                elseif HealSmart_CurrentActivePage == 5 then
+                    -- Page 5: Buffs Applied
+                    if data.buffs > 0 then shouldInclude = true end
+                elseif HealSmart_CurrentActivePage == 6 then
+                    -- Page 6: Deaths
+                    if data.deaths > 0 then shouldInclude = true end
+                elseif HealSmart_CurrentActivePage == 7 then
+                    -- Page 7: Resurrects Cast
+                    if data.resurrects > 0 then shouldInclude = true end
+                end
+
+                if shouldInclude then
+                    table.insert(sortedHealers, data)
+                    totalRaidEffective = totalRaidEffective + data.effective
+                    if data.effective > topHealerAmount then topHealerAmount = data.effective end
+                    if data.dispels > topDispelValue then topDispelValue = data.dispels end
+                    if data.deaths > topDeathValue then topDeathValue = data.deaths end
+                    if data.resurrects > topRessValue then topRessValue = data.resurrects end
+                end
             end
         end
     end
 
-    -- Render blank state if no dataset rows found
     if #sortedHealers == 0 then
         local baseTitle = HealSmart_PageTitles[HealSmart_CurrentActivePage] or "HealSmart"
         local pageTitle = baseTitle .. " (" .. sessionLabel .. ")"
@@ -203,36 +227,32 @@ coreFrame.RefreshStats = function()
         return
     end
 
-    -- Compile dynamic strings headings using the unified global dictionary array
+    local viewTitle = ""
     local baseTitle = HealSmart_PageTitles[HealSmart_CurrentActivePage] or "HealSmart"
-    local viewTitle = baseTitle .. " (" .. sessionLabel .. ")"
+    viewTitle = baseTitle .. " (" .. sessionLabel .. ")"
 
-    -- CORRECTLY ORDERED SORTING CIRCUITS FOR v0.7.0 (4: Dispels, 5: Buffs, 6: Deaths, 7: Resser)
+    -- Sort and route datasets targeting the UI bar factory loop
     if HealSmart_CurrentActivePage == 1 then
         table.sort(sortedHealers, function(a, b) return (a.effective == b.effective) and (a.name < b.name) or (a.effective > b.effective) end)
         if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topHealerAmount, "HEAL", totalRaidEffective, viewTitle) end
     elseif HealSmart_CurrentActivePage == 2 then
         table.sort(sortedHealers, function(a, b) return (a.percent == b.percent) and (a.name < b.name) or (a.percent > b.percent) end)
         if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, 0, "EFFICIENCY", 0, viewTitle) end
-    elseif HealSmart_CurrentActivePage == 3 then
+    elseif HealSmart_CurrentActivePage  == 3 then
         table.sort(sortedHealers, function(a, b) return (a.hpm == b.hpm) and (a.name < b.name) or (a.hpm > b.hpm) end)
         if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topHPMValue, "MANA", 0, viewTitle) end
     elseif HealSmart_CurrentActivePage == 4 then
-        -- Page 4: Dispels Done
         table.sort(sortedHealers, function(a, b) return (a.dispels == b.dispels) and (a.name < b.name) or (a.dispels > b.dispels) end)
         if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topDispelValue, "DISPELS", 0, viewTitle) end
     elseif HealSmart_CurrentActivePage == 5 then
-        -- Page 5: Buffs Cast
         table.sort(sortedHealers, function(a, b) return (a.buffs == b.buffs) and (a.name < b.name) or (a.buffs > b.buffs) end)
         local topBuffValue = 0
         for _, data in ipairs(sortedHealers) do if data.buffs > topBuffValue then topBuffValue = data.buffs end end
         if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topBuffValue, "BUFFS", 0, viewTitle) end
     elseif HealSmart_CurrentActivePage == 6 then
-        -- Page 6: Raid Deaths
         table.sort(sortedHealers, function(a, b) return (a.deaths == b.deaths) and (a.name < b.name) or (a.deaths > b.deaths) end)
         if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topDeathValue, "DEATHS", 0, viewTitle) end
     elseif HealSmart_CurrentActivePage == 7 then
-        -- Page 7: Resurrects Cast
         table.sort(sortedHealers, function(a, b) return (a.resurrects == b.resurrects) and (a.name < b.name) or (a.resurrects > b.resurrects) end)
         if HealSmart_RenderRaidBars then HealSmart_RenderRaidBars(sortedHealers, topRessValue, "RESS", 0, viewTitle) end
     end
