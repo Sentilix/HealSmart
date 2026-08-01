@@ -1,1 +1,1 @@
-# HealSmart
+# HeroStats

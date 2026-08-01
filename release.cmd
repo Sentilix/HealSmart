@@ -1,6 +1,6 @@
 @echo off
 
-set ADDONNAME=HealSmart
+set ADDONNAME=HeroStats
 
 echo Version number (a.b.c) [Q=quit]
 set /p VERSION=%ADDONNAME%-

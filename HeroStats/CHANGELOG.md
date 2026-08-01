@@ -1,4 +1,4 @@
-# HealSmart Changelog
+# HeroStats Changelog
 
 # Changelog - HealSmart v0.8.0
 
