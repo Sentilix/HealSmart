@@ -567,6 +567,10 @@ function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
             local hps = data.effective / fightSeconds
             bar.rightText:SetText(string.format("%s (%.0f HPS) - %.1f%%", formattedAmt, hps, raidSharePercent))
             
+        elseif viewType == "HEAL_CRIT" then
+            -- FIXED v0.10.0: Render healing crit percentages cleanly on the primary layout bars
+            bar.rightText:SetText(string.format("%.1f%% Crit Share", data.healCritPct or 0))
+
         elseif viewType == "OVERHEALING" then
             bar.rightText:SetText(string.format("%.1f%% Efficiency", data.percent or 0))
             
@@ -582,6 +586,10 @@ function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
             local dps = data.damageDone / fightSeconds
             bar.rightText:SetText(string.format("%s (%.0f DPS)", formattedAmt, dps))
             
+        elseif viewType == "DMG_CRIT" then
+            -- FIXED v0.10.0: Render damage crit percentages cleanly on the primary layout bars
+            bar.rightText:SetText(string.format("%.1f%% Crit Share", data.dmgCritPct or 0))
+
         elseif viewType == "DAMAGE_TAKEN" then
             local formattedAmt = FormatDotNumber and FormatDotNumber(data.damageTaken) or data.damageTaken
             local dtps = data.damageTaken / fightSeconds
@@ -739,6 +747,61 @@ function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
                     end
                 end
 				
+            elseif viewType == "DMG_CRIT" then
+                -- FIXED v0.10.0: Render detailed damage spell crits breakdown inside tooltip layout
+                GameTooltip:AddLine("Top Critical Damage Abilities:", 1, 1, 1)
+            
+                if data.spellCrits and next(data.spellCrits) ~= nil then
+                    local sortedSpells = {}
+                    for spellName, cr in pairs(data.spellCrits) do
+                        table.insert(sortedSpells, { name = spellName, hits = cr.hits, crits = cr.crits })
+                    end
+                    table.sort(sortedSpells, function(a, b) return a.crits > b.crits end)
+                
+                    -- Top 10 cap loop synchronized layout-wide
+                    for i = 1, math.min(10, #sortedSpells) do
+                        local s = sortedSpells[i]
+                        local spellCritPct = (s.hits > 0) and ((s.crits / s.hits) * 100) or 0
+                    
+                        -- Outputs: "1. Fireball | 14 (38%)" using golden design guidelines
+                        GameTooltip:AddDoubleLine(
+                            i .. ". " .. s.name,
+                            string.format("%d (%.0f%%)", s.crits, spellCritPct),
+                            0.8, 0.8, 0.8, 1, 0.82, 0
+                        )
+                    end
+                else
+                    GameTooltip:AddLine("No critical damage records found for this session.", 0.6, 0.6, 0.6, true)
+                end
+
+            elseif viewType == "HEAL_CRIT" then
+                -- FIXED v0.10.0: Render detailed healing spell crits breakdown inside tooltip layout
+                GameTooltip:AddLine("Top Critical Healing Abilities:", 1, 1, 1)
+            
+                if data.spellHealCrits and next(data.spellHealCrits) ~= nil then
+                    local sortedHeals = {}
+                    for spellName, cr in pairs(data.spellHealCrits) do
+                        table.insert(sortedHeals, { name = spellName, hits = cr.hits, crits = cr.crits })
+                    end
+                    table.sort(sortedHeals, function(a, b) return a.crits > b.crits end)
+                
+                    -- Top 10 cap loop synchronized layout-wide
+                    for i = 1, math.min(10, #sortedHeals) do
+                        local h = sortedHeals[i]
+                        local spellCritPct = (h.hits > 0) and ((h.crits / h.hits) * 100) or 0
+                    
+                        -- Outputs: "1. Flash Heal | 8 (24%)" using golden design guidelines
+                        GameTooltip:AddDoubleLine(
+                            i .. ". " .. h.name,
+                            string.format("%d (%.0f%%)", h.crits, spellCritPct),
+                            0.8, 0.8, 0.8, 1, 0.82, 0
+                        )
+                    end
+                else
+                    GameTooltip:AddLine("No critical healing records found for this session.", 0.6, 0.6, 0.6, true)
+                end
+
+
             elseif pageName == "DISPELS" then
                 GameTooltip:AddLine("Top Dispel Abilities:", 1, 1, 1)
                 if data.spellDispels and next(data.spellDispels) ~= nil then

@@ -2,19 +2,21 @@
 -- HeroStats - Global Constants & Database
 -- ==========================================
 
--- Unified data-driven page routing framework v0.8.0
+-- Unified 1-Based Data-Driven Page Routing Framework
 HeroStats_Pages = {
     [1]  = { name = "FRONTPAGE",     title = "1. HeroStats" },
     [2]  = { name = "DAMAGE_DONE",   title = "2. Damage Done" },
-    [3]  = { name = "DAMAGE_TAKEN",  title = "3. Damage Taken" },
-    [4]  = { name = "HEALING",       title = "4. Healing Done" },
-    [5]  = { name = "OVERHEALING",   title = "5. Heal vs Overheal" },
-    [6]  = { name = "MANA_EFF",      title = "6. Mana Efficiency" },
-    [7]  = { name = "MANA_GAINED",   title = "7. Mana Gained" },
-    [8]  = { name = "DISPELS",       title = "8. Dispels Done" },
-    [9]  = { name = "BUFFS",         title = "9. Buffs" },
-    [10]  = { name = "DEATHS",       title = "10. Deaths" },
-    [11]  = { name = "RESURRECTS",   title = "11. Resurrects Cast" }
+    [3]  = { name = "DMG_CRIT",      title = "3. Damage Crits" },
+    [4]  = { name = "DAMAGE_TAKEN",  title = "4. Damage Taken" },
+    [5]  = { name = "HEALING",       title = "5. Healing Done" },
+    [6]  = { name = "HEAL_CRIT",      title = "6. Healing Crits" },
+    [7]  = { name = "OVERHEALING",   title = "7. Efficiency" },
+    [8]  = { name = "MANA_EFF",      title = "8. Mana Efficiency" },
+    [9]  = { name = "MANA_GAINED",   title = "9. Mana Gained" },
+    [10] = { name = "DISPELS",       title = "10. Dispels Done" },
+    [11] = { name = "BUFFS",         title = "11. Buffs" },
+    [12] = { name = "DEATHS",        title = "12. Deaths" },
+    [13] = { name = "RESURRECTS",    title = "13. Resurrects Cast" }
 }
 
 HeroStats_SpellCostDB = {

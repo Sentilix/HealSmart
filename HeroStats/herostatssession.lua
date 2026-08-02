@@ -104,9 +104,18 @@ function HeroStats_UpdateSessionListWindow()
             local sessionData = HeroStatsSettings.sessions[i]
             if sessionData then
                 local btn = sessionButtonsCache[rowIdx] or CreateSessionRow(rowIdx)
-                btn.titleText:SetText(sessionData.id .. ": " .. sessionData.name)
                 
+                -- FIXED v0.10.0: Evaluate the live status flag before writing the label text
                 local isCurrentLiveSlot = (i == HeroStatsSettings.activeSessionIndex)
+                local displayName = sessionData.name or "Unknown"
+                
+                if isCurrentLiveSlot then
+                    displayName = "Current session"
+                end
+                
+                -- Outputs the precise uniform layout: "1: Current session"
+                btn.titleText:SetText(sessionData.id .. ": " .. displayName)
+                
                 local isThisSelected = false
                 
                 if HeroStatsSettings.selectedViewSessionID == 0 and isCurrentLiveSlot then

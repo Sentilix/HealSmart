@@ -218,12 +218,12 @@ function coreFrame.RefreshStats()
     if not IsInGroup() then activeThreshold = 0 end
 
     local dataSourceTable = nil
-    local sessionLabel = "Current Fight"
+    local sessionLabel = "Current"
     local activeViewID = HeroStatsSettings and HeroStatsSettings.selectedViewSessionID or 0
 
     if activeViewID == -1 then
         dataSourceTable = HeroStatsSettings and HeroStatsSettings.overallData
-        sessionLabel = "Overall Total"
+        sessionLabel = "Total"
     else
         if HeroStatsSettings and HeroStatsSettings.sessions then
             local targetIdx = HeroStatsSettings.activeSessionIndex or 1
@@ -240,6 +240,10 @@ function coreFrame.RefreshStats()
             dataSourceTable = sessionData and sessionData.healers
         end
     end
+
+    -- FIXED v0.10.0: Compile your clean, short window title before sorting loops
+    local viewTitle = pageRecord and pageRecord.title or "HeroStats"
+    viewTitle = string.format("%s (%s)", viewTitle, sessionLabel)
 
     -- NEW v0.9.0: Dynamic Historical Time Calibration Pipeline
     local activeFightSeconds = HeroStats_CurrentFightDuration or 0 -- Default fallback
@@ -277,78 +281,98 @@ function coreFrame.RefreshStats()
 
     if dataSourceTable then
         for guid, data in pairs(dataSourceTable) do
-            -- TRI-STATE ENGINE INGRESS GUARD (v0.10.0)
-            local includePlayer = true
-            
-            if filterState == 2 then
-                -- State 2: Strictly filter out non-healing classes layout-wide
-                if not HEALER_CLASSES[data.class] then includePlayer = false end
-            elseif filterState == 3 then
-                -- State 3: Strictly filter out classes that do not match the player
-                if data.class ~= playerClassFilename then includePlayer = false end
-            end
-            
-            -- Hard structural restriction for Mana Efficiency
-            if pageName == "MANA_EFF" and not HEALER_CLASSES[data.class] then
-                includePlayer = false
-            end
+            -- FIXED v0.10.0: INGRESS DATA SHIELD - Skip metadata strings/numbers inside the loop
+            if data and type(data) == "table" and data.class then
 
-            -- Only parse data and populate the UI if the player clears the filter state
-            if includePlayer then
-                local total = data.effective + data.overheal
-                data.percent = (total > 0) and ((data.effective / total) * 100) or 0
-                data.manaUsed = data.manaUsed or 0
-                data.deaths = data.deaths or 0
-                data.resurrects = data.resurrects or 0
-                data.dispels = data.dispels or 0
-                data.buffs = data.buffs or 0
-                data.damageDone = data.damageDone or 0
-                data.damageTaken = data.damageTaken or 0
-                data.manaGained = data.manaGained or 0
+                -- TRI-STATE ENGINE INGRESS GUARD (v0.10.0)
+                local includePlayer = true
+                
+                if filterState == 2 then
+                    -- State 2: Strictly filter out non-healing classes layout-wide
+                    if not HEALER_CLASSES[data.class] then includePlayer = false end
+                elseif filterState == 3 then
+                    -- State 3: Strictly filter out classes that do not match the player
+                    if data.class ~= playerClassFilename then includePlayer = false end
+                end
+                
+                -- Hard structural restriction for Mana Efficiency
+                if pageName == "MANA_EFF" and not HEALER_CLASSES[data.class] then
+                    includePlayer = false
+                end
 
-                -- Calculate and track factual HPM yields safely
-                if data.manaUsed > 0 then
-                    data.hpm = data.effective / data.manaUsed
-                    if data.manaUsed >= activeThreshold then
-                        if data.hpm > topHPMValue then topHPMValue = data.hpm end
+                -- Only parse data and populate the UI if the player clears the filter state
+                if includePlayer then
+                    local total = data.effective + data.overheal
+                    data.percent = (total > 0) and ((data.effective / total) * 100) or 0
+                    data.manaUsed = data.manaUsed or 0
+                    data.deaths = data.deaths or 0
+                    data.resurrects = data.resurrects or 0
+                    data.dispels = data.dispels or 0
+                    data.buffs = data.buffs or 0
+                    data.damageDone = data.damageDone or 0
+                    data.damageTaken = data.damageTaken or 0
+                    data.manaGained = data.manaGained or 0
+
+                    -- Calculate and track factual HPM yields safely
+                    if data.manaUsed > 0 then
+                        data.hpm = data.effective / data.manaUsed
+                        if data.manaUsed >= activeThreshold then
+                            if data.hpm > topHPMValue then topHPMValue = data.hpm end
+                        end
+                    else
+                        data.hpm = 0
                     end
-                else
-                    data.hpm = 0
-                end
 
-                -- Accumulate maximum thresholds inside your dataset loops
-                if data.damageDone > topDamageDoneValue then topDamageDoneValue = data.damageDone end
-                if data.damageTaken > topDamageTakenValue then topDamageTakenValue = data.damageTaken end
-                if data.buffs > topBuffsValue then topBuffsValue = data.buffs end
-                if data.manaGained > topManaGainedValue then topManaGainedValue = data.manaGained end
+                    -- Accumulate maximum thresholds inside your dataset loops
+                    if data.damageDone > topDamageDoneValue then topDamageDoneValue = data.damageDone end
+                    if data.damageTaken > topDamageTakenValue then topDamageTakenValue = data.damageTaken end
+                    if data.buffs > topBuffsValue then topBuffsValue = data.buffs end
+                    if data.manaGained > topManaGainedValue then topManaGainedValue = data.manaGained end
 
-                -- Pure data-driven token filter mapping gates
-                local shouldInclude = false
-                if pageName == "HEALING" or pageName == "OVERHEALING" or pageName == "MANA_EFF" then
-                    if (data.effective or 0) > 0 or (data.overheal or 0) > 0 then shouldInclude = true end
-                elseif pageName == "DISPELS" then
-                    if (data.dispels or 0) > 0 then shouldInclude = true end
-                elseif pageName == "BUFFS" then
-                    if (data.buffs or 0) > 0 then shouldInclude = true end
-                elseif pageName == "DEATHS" then
-                    if (data.deaths or 0) > 0 then shouldInclude = true end
-                elseif pageName == "RESURRECTS" then
-                    if (data.resurrects or 0) > 0 then shouldInclude = true end
-                elseif pageName == "DAMAGE_DONE" then
-                    if (data.damageDone or 0) > 0 then shouldInclude = true end
-                elseif pageName == "DAMAGE_TAKEN" then
-                    if (data.damageTaken or 0) > 0 then shouldInclude = true end
-                elseif pageName == "MANA_GAINED" then
-                    if (data.manaGained or 0) > 0 then shouldInclude = true end
-                end
+                    -- Inside your data loop right before the "if shouldInclude then" check:
+                    -- FIXED v0.10.0: Live calculations for master critical strike percentage yields
+                    local masterDmgHits = data.totalHits or 0
+                    local masterDmgCrits = data.critHits or 0
+                    data.dmgCritPct = (masterDmgHits > 0) and ((masterDmgCrits / masterDmgHits) * 100) or 0
 
-                if shouldInclude then
-                    table.insert(sortedHealers, data)
-                    totalRaidEffective = totalRaidEffective + data.effective
-                    if data.effective > topHealerAmount then topHealerAmount = data.effective end
-                    if data.dispels > topDispelValue then topDispelValue = data.dispels end
-                    if data.deaths > topDeathValue then topDeathValue = data.deaths end
-                    if data.resurrects > topRessValue then topRessValue = data.resurrects end
+                    local masterHealHits = data.totalHealHits or 0
+                    local masterHealCrits = data.critHealHits or 0
+                    data.healCritPct = (masterHealHits > 0) and ((masterHealCrits / masterHealHits) * 100) or 0
+
+                    -- Pure data-driven token filter mapping gates (Expand your existing matrix)
+                    local shouldInclude = false
+                    if pageName == "HEALING" or pageName == "OVERHEALING" or pageName == "MANA_EFF" then
+                        if (data.effective or 0) > 0 or (data.overheal or 0) > 0 then shouldInclude = true end
+                    elseif pageName == "DMG_CRIT" then
+                        -- Include if the player has logged any form of damage interaction
+                        if masterDmgHits > 0 then shouldInclude = true end
+                    elseif pageName == "HEAL_CRIT" then
+                        -- Include if the player has logged any form of healing interaction
+                        if masterHealHits > 0 then shouldInclude = true end
+                    elseif pageName == "DISPELS" then
+                        if (data.dispels or 0) > 0 then shouldInclude = true end
+                    elseif pageName == "BUFFS" then
+                        if (data.buffs or 0) > 0 then shouldInclude = true end
+                    elseif pageName == "DEATHS" then
+                        if (data.deaths or 0) > 0 then shouldInclude = true end
+                    elseif pageName == "RESURRECTS" then
+                        if (data.resurrects or 0) > 0 then shouldInclude = true end
+                    elseif pageName == "DAMAGE_DONE" then
+                        if (data.damageDone or 0) > 0 then shouldInclude = true end
+                    elseif pageName == "DAMAGE_TAKEN" then
+                        if (data.damageTaken or 0) > 0 then shouldInclude = true end
+                    elseif pageName == "MANA_GAINED" then
+                        if (data.manaGained or 0) > 0 then shouldInclude = true end
+                    end
+
+                    if shouldInclude then
+                        table.insert(sortedHealers, data)
+                        totalRaidEffective = totalRaidEffective + data.effective
+                        if data.effective > topHealerAmount then topHealerAmount = data.effective end
+                        if data.dispels > topDispelValue then topDispelValue = data.dispels end
+                        if data.deaths > topDeathValue then topDeathValue = data.deaths end
+                        if data.resurrects > topRessValue then topRessValue = data.resurrects end
+                    end
                 end
             end
         end
@@ -362,11 +386,16 @@ function coreFrame.RefreshStats()
         return
     end
 
-    -- FIXED v0.8.0: Data-driven sorting and rendering pipeline (Consolidated & Token Synchronized)
+    -- FIXED v0.10.0: Symmetrical sorting logic for your two brand-new critical strike dashboards
     if pageName == "DAMAGE_DONE" then
         table.sort(sortedHealers, function(a, b) return (a.damageDone == b.damageDone) and (a.name < b.name) or (a.damageDone > b.damageDone) end)
         if HeroStats_RenderRaidBars then HeroStats_RenderRaidBars(sortedHealers, topDamageDoneValue, "DAMAGE_DONE", 0, viewTitle) end
         
+    elseif pageName == "DMG_CRIT" then
+        -- Sort descending by damage crit percentage, fallback alphabetically
+        table.sort(sortedHealers, function(a, b) return (a.dmgCritPct == b.dmgCritPct) and (a.name < b.name) or (a.dmgCritPct > b.dmgCritPct) end)
+        if HeroStats_RenderRaidBars then HeroStats_RenderRaidBars(sortedHealers, 100, "DMG_CRIT", 0, viewTitle) end
+
     elseif pageName == "DAMAGE_TAKEN" then
         table.sort(sortedHealers, function(a, b) return (a.damageTaken == b.damageTaken) and (a.name < b.name) or (a.damageTaken > b.damageTaken) end)
         if HeroStats_RenderRaidBars then HeroStats_RenderRaidBars(sortedHealers, topDamageTakenValue, "DAMAGE_TAKEN", 0, viewTitle) end
@@ -375,6 +404,11 @@ function coreFrame.RefreshStats()
         table.sort(sortedHealers, function(a, b) return (a.effective == b.effective) and (a.name < b.name) or (a.effective > b.effective) end)
         if HeroStats_RenderRaidBars then HeroStats_RenderRaidBars(sortedHealers, topHealerAmount, "HEALING", totalRaidEffective, viewTitle) end
         
+    elseif pageName == "HEAL_CRIT" then
+        -- Sort descending by healing crit percentage, fallback alphabetically
+        table.sort(sortedHealers, function(a, b) return (a.healCritPct == b.healCritPct) and (a.name < b.name) or (a.healCritPct > b.healCritPct) end)
+        if HeroStats_RenderRaidBars then HeroStats_RenderRaidBars(sortedHealers, 100, "HEAL_CRIT", 0, viewTitle) end
+
     elseif pageName == "OVERHEALING" then
         table.sort(sortedHealers, function(a, b) return (a.percent == b.percent) and (a.name < b.name) or (a.percent > b.percent) end)       
         if HeroStats_RenderRaidBars then HeroStats_RenderRaidBars(sortedHealers, 100, "OVERHEALING", 0, viewTitle) end
@@ -590,21 +624,62 @@ local function OnEvent_DAMAGE(eventType, sourceGUID, sourceName, sourceFlags, de
                 fullSpellName = fullSpellName .. spellModifier 
             end
                 
+            -- Inside your A: DAMAGE DONE DETECTION block, right after profile.damageDone accumulation:
             local profile = HeroStats_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, sourceClass)
             profile.damageDone = profile.damageDone + amount
                 
+            -- FIXED v0.10.0: Extract the unique critical strike flags based on hit types
+            -- Melee swing damage flags reside on argument 18, spell variants on argument 21
+            local isCrit = false
+            if eventType == "SWING_DAMAGE" then
+                isCrit = select(18, CombatLogGetCurrentEventInfo())
+            else
+                isCrit = select(21, CombatLogGetCurrentEventInfo())
+            end
+
+            -- Accumulate master totals for your new Damage Crits tab layout
+            profile.totalHits = (profile.totalHits or 0) + 1
+            if isCrit then
+                profile.critHits = (profile.critHits or 0) + 1
+            end
+
             if fullSpellName then
                 if not profile.spellDamage then profile.spellDamage = {} end
                 profile.spellDamage[fullSpellName] = (profile.spellDamage[fullSpellName] or 0) + amount
+                
+                -- NEW v0.10.0 FEATURE: Multi-dimensional sub-table tracking for spell crits breakdown
+                if not profile.spellCrits then profile.spellCrits = {} end
+                if not profile.spellCrits[fullSpellName] then
+                    profile.spellCrits[fullSpellName] = { hits = 0, crits = 0 }
+                end
+                profile.spellCrits[fullSpellName].hits = profile.spellCrits[fullSpellName].hits + 1
+                if isCrit then
+                    profile.spellCrits[fullSpellName].crits = profile.spellCrits[fullSpellName].crits + 1
+                end
             end
                 
+            -- Synchronize flawlessly onto the master Overall database layers
             if HeroStatsSettings and HeroStatsSettings.overallData then
                 local overallProfile = HeroStats_GetOrCreateProfile(HeroStatsSettings.overallData, sourceGUID, cleanSourceName, sourceClass)
                 overallProfile.damageDone = overallProfile.damageDone + amount
+                
+                overallProfile.totalHits = (overallProfile.totalHits or 0) + 1
+                if isCrit then
+                    overallProfile.critHits = (overallProfile.critHits or 0) + 1
+                end
                     
                 if fullSpellName then
                     if not overallProfile.spellDamage then overallProfile.spellDamage = {} end
                     overallProfile.spellDamage[fullSpellName] = (overallProfile.spellDamage[fullSpellName] or 0) + amount
+                    
+                    if not overallProfile.spellCrits then overallProfile.spellCrits = {} end
+                    if not overallProfile.spellCrits[fullSpellName] then
+                        overallProfile.spellCrits[fullSpellName] = { hits = 0, crits = 0 }
+                    end
+                    overallProfile.spellCrits[fullSpellName].hits = overallProfile.spellCrits[fullSpellName].hits + 1
+                    if isCrit then
+                        overallProfile.spellCrits[fullSpellName].crits = overallProfile.spellCrits[fullSpellName].crits + 1
+                    end
                 end
             end
             coreFrame.RefreshStats()
@@ -672,7 +747,7 @@ local function OnEvent_DAMAGE(eventType, sourceGUID, sourceName, sourceFlags, de
     end;
 end;
 
---  DIRECT HEALS & HOTS (v0.8.0 - Rank-Separated & Parameter Secured)
+--  DIRECT HEALS & HOTS (v0.10.0 - Healing Crits Tracking Added)
 local function OnEvent_HEAL(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags)
     local spellID, spellName = select(12, CombatLogGetCurrentEventInfo())
     local _, _, _, amount, overheal = select(12, CombatLogGetCurrentEventInfo())
@@ -692,10 +767,19 @@ local function OnEvent_HEAL(eventType, sourceGUID, sourceName, sourceFlags, dest
         local classFilename = groupRosterCache[cleanName] or SPELL_CLASS_CACHE[spellName]
 
         if classFilename then
+            -- FIXED v0.10.0: Extract the healing critical strike boolean flag from argument 18
+            local isHealCrit = select(18, CombatLogGetCurrentEventInfo())
+
             local healer = HeroStats_GetOrCreateProfile(activeHealers, sourceGUID, cleanName, classFilename)
             healer.effective = healer.effective + effective
             healer.overheal = healer.overheal + overheal
                 
+            -- Accumulate master hits and crits for your new Healing Crits page
+            healer.totalHealHits = (healer.totalHealHits or 0) + 1
+            if isHealCrit then
+                healer.critHealHits = (healer.critHealHits or 0) + 1
+            end
+
             -- Dynamic Rank Compiler (e.g. "Flash Heal (Rank 4)")
             local fullSpellName = spellName
             if spellID and spellName and C_Spell and C_Spell.GetSpellSubtext then
@@ -712,6 +796,16 @@ local function OnEvent_HEAL(eventType, sourceGUID, sourceName, sourceFlags, dest
                 end
                 healer.spellHeals[fullSpellName].effective = healer.spellHeals[fullSpellName].effective + effective
                 healer.spellHeals[fullSpellName].overheal = healer.spellHeals[fullSpellName].overheal + overheal
+                
+                -- NEW v0.10.0 FEATURE: Multi-dimensional sub-table tracking for spell heal crits breakdown
+                if not healer.spellHealCrits then healer.spellHealCrits = {} end
+                if not healer.spellHealCrits[fullSpellName] then
+                    healer.spellHealCrits[fullSpellName] = { hits = 0, crits = 0 }
+                end
+                healer.spellHealCrits[fullSpellName].hits = healer.spellHealCrits[fullSpellName].hits + 1
+                if isHealCrit then
+                    healer.spellHealCrits[fullSpellName].crits = healer.spellHealCrits[fullSpellName].crits + 1
+                end
             end
 
             if HeroStatsSettings and HeroStatsSettings.overallData then
@@ -719,6 +813,11 @@ local function OnEvent_HEAL(eventType, sourceGUID, sourceName, sourceFlags, dest
                 overallHealer.effective = overallHealer.effective + effective
                 overallHealer.overheal = overallHealer.overheal + overheal
                     
+                overallHealer.totalHealHits = (overallHealer.totalHealHits or 0) + 1
+                if isHealCrit then
+                    overallHealer.critHealHits = (overallHealer.critHealHits or 0) + 1
+                end
+
                 if fullSpellName then
                     if not overallHealer.spellHeals then overallHealer.spellHeals = {} end
                     if not overallHealer.spellHeals[fullSpellName] then 
@@ -726,6 +825,15 @@ local function OnEvent_HEAL(eventType, sourceGUID, sourceName, sourceFlags, dest
                     end
                     overallHealer.spellHeals[fullSpellName].effective = overallHealer.spellHeals[fullSpellName].effective + effective
                     overallHealer.spellHeals[fullSpellName].overheal = overallHealer.spellHeals[fullSpellName].overheal + overheal
+                    
+                    if not overallHealer.spellHealCrits then overallHealer.spellHealCrits = {} end
+                    if not overallHealer.spellHealCrits[fullSpellName] then
+                        overallHealer.spellHealCrits[fullSpellName] = { hits = 0, crits = 0 }
+                    end
+                    overallHealer.spellHealCrits[fullSpellName].hits = overallHealer.spellHealCrits[fullSpellName].hits + 1
+                    if isHealCrit then
+                        overallHealer.spellHealCrits[fullSpellName].crits = overallHealer.spellHealCrits[fullSpellName].crits + 1
+                    end
                         
                     -- Purely accumulate overall master effective yield safely
                     if not overallHealer.spellMana then overallHealer.spellMana = {} end
@@ -735,7 +843,7 @@ local function OnEvent_HEAL(eventType, sourceGUID, sourceName, sourceFlags, dest
                     overallHealer.spellMana[fullSpellName].effective = overallHealer.spellMana[fullSpellName].effective + effective
                 end
             end
-            coreFrame.RefreshStats()
+            if coreFrame and coreFrame.RefreshStats then coreFrame.RefreshStats() end
         end
     end
 end;
