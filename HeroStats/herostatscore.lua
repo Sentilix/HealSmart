@@ -21,6 +21,17 @@ local HEALER_CLASSES = {
     ["SHAMAN"] = true
 }
 
+-- Unified mana-user class identifier matrix for power tracking
+local MANA_CLASSES = {
+    ["PRIEST"] = true,
+    ["DRUID"] = true,
+    ["PALADIN"] = true,
+    ["SHAMAN"] = true,
+    ["MAGE"] = true,
+    ["WARLOCK"] = true,
+    ["HUNTER"] = true
+}
+
 local SPELL_CLASS_CACHE = {
     ["Healing Wave"] = "SHAMAN", ["Lesser Healing Wave"] = "SHAMAN", ["Chain Heal"] = "SHAMAN",
     ["Lesser Heal"] = "PRIEST", ["Heal"] = "PRIEST", ["Flash Heal"] = "PRIEST", ["Greater Heal"] = "PRIEST", ["Renew"] = "PRIEST", ["Prayer of Healing"] = "PRIEST", ["Power Word: Shield"] = "PRIEST",
@@ -341,14 +352,24 @@ function coreFrame.RefreshStats()
 
                     -- Pure data-driven token filter mapping gates (Expand your existing matrix)
                     local shouldInclude = false
-                    if pageName == "HEALING" or pageName == "OVERHEALING" or pageName == "MANA_EFF" then
+                    if pageName == "HEALING" then
                         if (data.effective or 0) > 0 or (data.overheal or 0) > 0 then shouldInclude = true end
-                    elseif pageName == "DMG_CRIT" then
-                        -- Include if the player has logged any form of damage interaction
-                        if masterDmgHits > 0 then shouldInclude = true end
+                    elseif pageName == "OVERHEALING" then
+                        -- FIXED v0.10.0: Restrict Overhealing Efficiency strictly to true healing classes
+                        if HEALER_CLASSES[data.class] and ((data.effective or 0) > 0 or (data.overheal or 0) > 0) then 
+                            shouldInclude = true 
+                        end
+                    elseif pageName == "MANA_EFF" then
+                        -- FIXED v0.10.0: Restrict HPM calculations strictly to true healing classes
+                        if HEALER_CLASSES[data.class] and ((data.effective or 0) > 0 or (data.overheal or 0) > 0) then 
+                            shouldInclude = true 
+                        end
+					elseif pageName == "DMG_CRIT" then
+                        -- FIXED v0.10.0: Only include players who have scored at least 1 damage critical hit
+                        if masterDmgCrits > 0 then shouldInclude = true end
                     elseif pageName == "HEAL_CRIT" then
-                        -- Include if the player has logged any form of healing interaction
-                        if masterHealHits > 0 then shouldInclude = true end
+                        -- FIXED v0.10.0: Only include players who have scored at least 1 healing critical hit
+                        if masterHealCrits > 0 then shouldInclude = true end
                     elseif pageName == "DISPELS" then
                         if (data.dispels or 0) > 0 then shouldInclude = true end
                     elseif pageName == "BUFFS" then
@@ -362,7 +383,9 @@ function coreFrame.RefreshStats()
                     elseif pageName == "DAMAGE_TAKEN" then
                         if (data.damageTaken or 0) > 0 then shouldInclude = true end
                     elseif pageName == "MANA_GAINED" then
-                        if (data.manaGained or 0) > 0 then shouldInclude = true end
+                        if MANA_CLASSES[data.class] and (data.manaGained or 0) > 0 then 
+                            shouldInclude = true 
+                        end
                     end
 
                     if shouldInclude then
@@ -641,20 +664,21 @@ local function OnEvent_DAMAGE(eventType, sourceGUID, sourceName, sourceFlags, de
             profile.totalHits = (profile.totalHits or 0) + 1
             if isCrit then
                 profile.critHits = (profile.critHits or 0) + 1
+                profile.critDamage = (profile.critDamage or 0) + amount
             end
 
             if fullSpellName then
                 if not profile.spellDamage then profile.spellDamage = {} end
                 profile.spellDamage[fullSpellName] = (profile.spellDamage[fullSpellName] or 0) + amount
                 
-                -- NEW v0.10.0 FEATURE: Multi-dimensional sub-table tracking for spell crits breakdown
                 if not profile.spellCrits then profile.spellCrits = {} end
                 if not profile.spellCrits[fullSpellName] then
-                    profile.spellCrits[fullSpellName] = { hits = 0, crits = 0 }
+                    profile.spellCrits[fullSpellName] = { hits = 0, crits = 0, dmg = 0 }
                 end
-                profile.spellCrits[fullSpellName].hits = profile.spellCrits[fullSpellName].hits + 1
+                profile.spellCrits[fullSpellName].hits = (profile.spellCrits[fullSpellName].hits or 0) + 1
                 if isCrit then
-                    profile.spellCrits[fullSpellName].crits = profile.spellCrits[fullSpellName].crits + 1
+                    profile.spellCrits[fullSpellName].crits = (profile.spellCrits[fullSpellName].crits or 0) + 1
+                    profile.spellCrits[fullSpellName].dmg = (profile.spellCrits[fullSpellName].dmg or 0) + amount
                 end
             end
                 
@@ -666,6 +690,7 @@ local function OnEvent_DAMAGE(eventType, sourceGUID, sourceName, sourceFlags, de
                 overallProfile.totalHits = (overallProfile.totalHits or 0) + 1
                 if isCrit then
                     overallProfile.critHits = (overallProfile.critHits or 0) + 1
+                    overallProfile.critDamage = (overallProfile.critDamage or 0) + amount
                 end
                     
                 if fullSpellName then
@@ -674,11 +699,12 @@ local function OnEvent_DAMAGE(eventType, sourceGUID, sourceName, sourceFlags, de
                     
                     if not overallProfile.spellCrits then overallProfile.spellCrits = {} end
                     if not overallProfile.spellCrits[fullSpellName] then
-                        overallProfile.spellCrits[fullSpellName] = { hits = 0, crits = 0 }
+                        overallProfile.spellCrits[fullSpellName] = { hits = 0, crits = 0, dmg = 0  }
                     end
                     overallProfile.spellCrits[fullSpellName].hits = overallProfile.spellCrits[fullSpellName].hits + 1
                     if isCrit then
                         overallProfile.spellCrits[fullSpellName].crits = overallProfile.spellCrits[fullSpellName].crits + 1
+                        overallProfile.spellCrits[fullSpellName].dmg = overallProfile.spellCrits[fullSpellName].dmg + amount
                     end
                 end
             end
@@ -778,6 +804,7 @@ local function OnEvent_HEAL(eventType, sourceGUID, sourceName, sourceFlags, dest
             healer.totalHealHits = (healer.totalHealHits or 0) + 1
             if isHealCrit then
                 healer.critHealHits = (healer.critHealHits or 0) + 1
+                healer.critHealAmt = (healer.critHealAmt or 0) + effective
             end
 
             -- Dynamic Rank Compiler (e.g. "Flash Heal (Rank 4)")
@@ -792,7 +819,7 @@ local function OnEvent_HEAL(eventType, sourceGUID, sourceName, sourceFlags, dest
             if fullSpellName then
                 if not healer.spellHeals then healer.spellHeals = {} end
                 if not healer.spellHeals[fullSpellName] then 
-                    healer.spellHeals[fullSpellName] = { effective = 0, overheal = 0 } 
+                    healer.spellHeals[fullSpellName] = { effective = 0, overheal = 0, amt = 0 } 
                 end
                 healer.spellHeals[fullSpellName].effective = healer.spellHeals[fullSpellName].effective + effective
                 healer.spellHeals[fullSpellName].overheal = healer.spellHeals[fullSpellName].overheal + overheal
@@ -800,11 +827,12 @@ local function OnEvent_HEAL(eventType, sourceGUID, sourceName, sourceFlags, dest
                 -- NEW v0.10.0 FEATURE: Multi-dimensional sub-table tracking for spell heal crits breakdown
                 if not healer.spellHealCrits then healer.spellHealCrits = {} end
                 if not healer.spellHealCrits[fullSpellName] then
-                    healer.spellHealCrits[fullSpellName] = { hits = 0, crits = 0 }
+                    healer.spellHealCrits[fullSpellName] = { hits = 0, crits = 0, amt = 0 }
                 end
                 healer.spellHealCrits[fullSpellName].hits = healer.spellHealCrits[fullSpellName].hits + 1
                 if isHealCrit then
                     healer.spellHealCrits[fullSpellName].crits = healer.spellHealCrits[fullSpellName].crits + 1
+                    healer.spellHealCrits[fullSpellName].amt = healer.spellHealCrits[fullSpellName].amt + effective
                 end
             end
 
@@ -1065,6 +1093,16 @@ local function OnEvent_MANAGAINS(eventType, sourceGUID, sourceName, sourceFlags,
     local spellID, spellName = select(12, CombatLogGetCurrentEventInfo())
     local amount, powerType = select(15, CombatLogGetCurrentEventInfo()) -- Amount is arg 15, PowerType is arg 16
         
+    -- Inside your OnEvent_MANAGAINS sub-function:
+    local cleanSourceName = string.match(sourceName, "([^-]+)")
+    local sourceClass = groupRosterCache[cleanSourceName]
+    if sourceGUID == playerGUID and not sourceClass then _, sourceClass = UnitClass("player") end
+    sourceClass = sourceClass or "UNKNOWN"
+
+    if not MANA_CLASSES[sourceClass] then 
+        return 
+    end
+
     amount = tonumber(amount) or 0
     powerType = tonumber(powerType) or 0 -- 0 is the universal Blizzard enum token for Mana
 
