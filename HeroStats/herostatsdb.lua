@@ -196,3 +196,4 @@ function HeroStats_GetPageRecord(pageIndex)
     return HeroStats_Pages[pageIndex] or HeroStats_Pages[1]
 end
 
+-- herostatsdb.lua

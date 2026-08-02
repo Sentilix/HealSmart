@@ -121,20 +121,91 @@ closeButton:SetScript("OnEnter", function(self)
 end)
 closeButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
--- Filter Toggle Button (10x10)
+-- Filter Toggle Button (10x10) - UPGRADED TO TRI-STATE (v0.10.0)
 filterButton = CreateFrame("Button", nil, header)
 filterButton:SetSize(10, 10)
 filterButton:SetPoint("RIGHT", closeButton, "LEFT", -2, -1)
-filterButton:SetScript("OnClick", function()
-    isCurrentlyClassFiltered = not isCurrentlyClassFiltered
-    HeroStats_UpdateFilterVisuals(isCurrentlyClassFiltered)
-    if HeroStats_ToggleClassFilter then HeroStats_ToggleClassFilter() end
+
+local _, playerClass = UnitClass("player")
+local currentSavedState = HeroStatsSettings and HeroStatsSettings.activeFilterState or 1
+if currentSavedState == 1 then
+    filterButton:SetNormalTexture("Interface\\Icons\\inv_ore_arcanite_01")
+elseif currentSavedState == 2 then
+    filterButton:SetNormalTexture("Interface\\Icons\\spell_holy_healingaura")
+elseif currentSavedState == 3 then
+    filterButton:SetNormalTexture("Interface\\Icons\\ClassIcon_" .. (playerClass or "Priest"))
+end
+if filterButton:GetNormalTexture() then filterButton:GetNormalTexture():SetAllPoints(filterButton) end
+
+filterButton:SetScript("OnClick", function(self)
+    if HeroStatsSettings then
+        local currentState = HeroStatsSettings.activeFilterState or 1
+        local nextState = currentState + 1
+        if nextState > 3 then nextState = 1 end
+        
+        HeroStatsSettings.activeFilterState = nextState
+        
+        if nextState == 1 then
+            self:SetNormalTexture("Interface\\Icons\\inv_ore_arcanite_01")
+        elseif nextState == 2 then
+            self:SetNormalTexture("Interface\\Icons\\spell_holy_healingaura")
+        elseif nextState == 3 then
+            self:SetNormalTexture("Interface\\Icons\\ClassIcon_" .. (playerClass or "Priest"))
+        end
+        if self:GetNormalTexture() then self:GetNormalTexture():SetAllPoints(self) end
+        
+        if coreFrame and coreFrame.RefreshStats then coreFrame.RefreshStats() end
+    end
 end)
+
+-- FIXED v0.10.0: Ultra-clean Tri-State click sequence sync
+filterButton:SetScript("OnClick", function(self)
+    if HeroStatsSettings then
+        local currentState = HeroStatsSettings.activeFilterState or 1
+        local nextState = currentState + 1
+        if nextState > 3 then nextState = 1 end
+        
+        HeroStatsSettings.activeFilterState = nextState
+        
+        if nextState == 1 then
+            self:SetNormalTexture("Interface\\Icons\\inv_ore_arcanite_01")
+        elseif nextState == 2 then
+            self:SetNormalTexture("Interface\\Icons\\spell_holy_healingaura")
+        elseif nextState == 3 then
+            self:SetNormalTexture("Interface\\Icons\\ClassIcon_" .. (playerClass or "Priest"))
+        end
+        if self:GetNormalTexture() then self:GetNormalTexture():SetAllPoints(self) end
+        
+        if filterButton:GetNormalTexture() then filterButton:GetNormalTexture():SetAllPoints(filterButton) end
+        
+        if HeroStats_GetCoreFrame then
+            local frame = HeroStats_GetCoreFrame()
+            if frame and frame.RefreshStats then
+                frame.RefreshStats()
+            end
+        end
+    end
+end)
+
+-- Filter Button Mouse Hover Instructions - UPGRADED TO TRI-STATE (v0.10.0)
 filterButton:SetScript("OnEnter", function(self)
     GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
-    GameTooltip:SetText("Toggle All classes or current class", 1, 1, 1, 1, true)
+    GameTooltip:ClearLines()
+    
+    local state = HeroStatsSettings and HeroStatsSettings.activeFilterState or 1
+    local stateNames = {
+        [1] = "None (Show All)",
+        [2] = "Healers Only",
+        [3] = "Your Class Only"
+    }
+    
+    GameTooltip:AddLine("Filter View Mode", 1, 1, 1)
+    GameTooltip:AddDoubleLine("Current Filter:", stateNames[state] or "None (Show All)", 0.8, 0.8, 0.8, 1, 0.82, 0)
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine("Click to cycle filter: None -> Healers -> Your Class", 0.5, 0.5, 0.5, true)
     GameTooltip:Show()
 end)
+
 filterButton:SetScript("OnLeave", function() GameTooltip:Hide() end)
 
 -- Graphical Next Page Button (14x14)

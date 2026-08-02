@@ -14,7 +14,7 @@ local groupRosterCache = {}
 local currentFilterMode = "ALL"
 local _, playerClassFilename = UnitClass("player")
 
-local ALLOWED_CLASSES = {
+local HEALER_CLASSES = {
     ["PRIEST"] = true,
     ["PALADIN"] = true,
     ["DRUID"] = true,
@@ -180,7 +180,6 @@ end
 local sortedHealers = {}
 
 function coreFrame.RefreshStats()
-    -- Unified v0.8.0 Data-Driven Token Matrix Routing
     local pageRecord = HeroStats_GetPageRecord(HeroStats_CurrentActivePage)
     local pageName = pageRecord.name
     local viewTitle = pageRecord.title
@@ -272,14 +271,30 @@ function coreFrame.RefreshStats()
     -- (We simply overwrite the global variable for this specific render tick frame)
     HeroStats_CurrentFightDuration_RenderOverride = activeFightSeconds
 
+    -- TRI-STATE CONFIGURATION: Read state parameters right before parsing the loop
+    local filterState = HeroStatsSettings and HeroStatsSettings.activeFilterState or 1
+    local _, playerClassFilename = UnitClass("player")
+
     if dataSourceTable then
         for guid, data in pairs(dataSourceTable) do
-            -- Dynamically disable class locks on damage pages using text tokens!
-            local isDamagePage = (pageName == "DAMAGE_DONE" or pageName == "DAMAGE_TAKEN")
+            -- TRI-STATE ENGINE INGRESS GUARD (v0.10.0)
+            local includePlayer = true
             
-            if currentFilterMode == "CLASS" and data.class ~= playerClassFilename and not isDamagePage then
-                -- Filtered safely
-            else
+            if filterState == 2 then
+                -- State 2: Strictly filter out non-healing classes layout-wide
+                if not HEALER_CLASSES[data.class] then includePlayer = false end
+            elseif filterState == 3 then
+                -- State 3: Strictly filter out classes that do not match the player
+                if data.class ~= playerClassFilename then includePlayer = false end
+            end
+            
+            -- Hard structural restriction for Mana Efficiency
+            if pageName == "MANA_EFF" and not HEALER_CLASSES[data.class] then
+                includePlayer = false
+            end
+
+            -- Only parse data and populate the UI if the player clears the filter state
+            if includePlayer then
                 local total = data.effective + data.overheal
                 data.percent = (total > 0) and ((data.effective / total) * 100) or 0
                 data.manaUsed = data.manaUsed or 0
@@ -676,7 +691,7 @@ local function OnEvent_HEAL(eventType, sourceGUID, sourceName, sourceFlags, dest
         local cleanName = string.match(sourceName, "([^-]+)")
         local classFilename = groupRosterCache[cleanName] or SPELL_CLASS_CACHE[spellName]
 
-        if classFilename and ALLOWED_CLASSES[classFilename] then
+        if classFilename then
             local healer = HeroStats_GetOrCreateProfile(activeHealers, sourceGUID, cleanName, classFilename)
             healer.effective = healer.effective + effective
             healer.overheal = healer.overheal + overheal
@@ -746,37 +761,34 @@ local function OnEvent_SHIELD(eventType, sourceGUID, sourceName, sourceFlags, de
                 
             sourceClass = sourceClass or "UNKNOWN"
 
-            if ALLOWED_CLASSES[sourceClass] then
-                -- NEW: Fetch the spellID and check for specific shield ranks dynamically
-                local spellID, spellName = select(12, CombatLogGetCurrentEventInfo())
-                local fullSpellName = spellName or "Damage Shield"
+            local spellID, spellName = select(12, CombatLogGetCurrentEventInfo())
+            local fullSpellName = spellName or "Damage Shield"
                     
-                if spellID and spellName and C_Spell and C_Spell.GetSpellSubtext then
-                    local rankText = C_Spell.GetSpellSubtext(spellID)
-                    if rankText and rankText ~= "" then
-                        fullSpellName = string.format("%s (%s)", spellName, rankText)
-                    end
+            if spellID and spellName and C_Spell and C_Spell.GetSpellSubtext then
+                local rankText = C_Spell.GetSpellSubtext(spellID)
+                if rankText and rankText ~= "" then
+                    fullSpellName = string.format("%s (%s)", spellName, rankText)
                 end
-                    
-                local profile = HeroStats_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, sourceClass)
-                profile.damageDone = profile.damageDone + amount
-                    
-                if fullSpellName then
-                    if not profile.spellDamage then profile.spellDamage = {} end
-                    profile.spellDamage[fullSpellName] = (profile.spellDamage[fullSpellName] or 0) + amount
-                end
-                    
-                if HeroStatsSettings and HeroStatsSettings.overallData then
-                    local overallProfile = HeroStats_GetOrCreateProfile(HeroStatsSettings.overallData, sourceGUID, cleanSourceName, sourceClass)
-                    overallProfile.damageDone = overallProfile.damageDone + amount
-                        
-                    if fullSpellName then
-                        if not overallProfile.spellDamage then overallProfile.spellDamage = {} end
-                        overallProfile.spellDamage[fullSpellName] = (overallProfile.spellDamage[fullSpellName] or 0) + amount
-                    end
-                end
-                coreFrame.RefreshStats()
             end
+                    
+            local profile = HeroStats_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, sourceClass)
+            profile.damageDone = profile.damageDone + amount
+                    
+            if fullSpellName then
+                if not profile.spellDamage then profile.spellDamage = {} end
+                profile.spellDamage[fullSpellName] = (profile.spellDamage[fullSpellName] or 0) + amount
+            end
+                    
+            if HeroStatsSettings and HeroStatsSettings.overallData then
+                local overallProfile = HeroStats_GetOrCreateProfile(HeroStatsSettings.overallData, sourceGUID, cleanSourceName, sourceClass)
+                overallProfile.damageDone = overallProfile.damageDone + amount
+                        
+                if fullSpellName then
+                    if not overallProfile.spellDamage then overallProfile.spellDamage = {} end
+                    overallProfile.spellDamage[fullSpellName] = (overallProfile.spellDamage[fullSpellName] or 0) + amount
+                end
+            end
+            coreFrame.RefreshStats()
         end
     end
 end;
@@ -829,7 +841,7 @@ local function OnEvent_ABSORBED(eventType, sourceGUID, sourceName, sourceFlags, 
     end
 end;
 
---  RAID DEATH WATCH ENGINE (Runs out-of-combat!)
+--  RAID DEATH WATCH ENGINE (Runs out-of-combat! - v0.10.0 Opened for All Classes)
 local function OnEvent_UNIT_DIED(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags)
 
     local isTargetGroupMember = (bit.band(destFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
@@ -839,19 +851,20 @@ local function OnEvent_UNIT_DIED(eventType, sourceGUID, sourceName, sourceFlags,
     -- Ensure we only track player deaths inside our own raid group, excluding pets and monsters
     if isTargetGroupMember and destName and not string.find(destGUID, "^Pet-") then
         local cleanDestName = string.match(destName, "([^-]+)")
-        local healerClass = groupRosterCache[cleanDestName]
+        -- Fetch the true class armor type from your live roster group cache
+        local targetClass = groupRosterCache[cleanDestName] or "UNKNOWN"
             
-        if healerClass and ALLOWED_CLASSES[healerClass] then
-            -- Add points to the person who died inside the current session array
-            local healer = HeroStats_GetOrCreateProfile(activeHealers, destGUID, cleanDestName, healerClass)
-            healer.deaths = healer.deaths + 1
+        local sessionHealers = HeroStats_GetActiveSessionHealers()
+        if sessionHealers then
+            local healer = HeroStats_GetOrCreateProfile(sessionHealers, destGUID, cleanDestName, targetClass)
+            healer.deaths = (healer.deaths or 0) + 1
                 
             -- Accumulate cumulatively inside the master Overall database sheet
             if HeroStatsSettings and HeroStatsSettings.overallData then
-                local overallHealer = HeroStats_GetOrCreateProfile(HeroStatsSettings.overallData, destGUID, cleanDestName, healerClass)
-                overallHealer.deaths = overallHealer.deaths + 1
+                local overallHealer = HeroStats_GetOrCreateProfile(HeroStatsSettings.overallData, destGUID, cleanDestName, targetClass)
+                overallHealer.deaths = (overallHealer.deaths or 0) + 1
             end
-            coreFrame.RefreshStats()
+            if coreFrame.RefreshStats then coreFrame.RefreshStats() end
         end
     end
 end;
@@ -869,37 +882,35 @@ local function OnEvent_DISPELL(eventType, sourceGUID, sourceName, sourceFlags, d
         if sourceGUID == playerGUID and not healerClass then _, healerClass = UnitClass("player") end
         healerClass = healerClass or "UNKNOWN"
             
-        if ALLOWED_CLASSES[healerClass] then
-            local sessionHealers = HeroStats_GetActiveSessionHealers()
-            if sessionHealers then
-                local healer = HeroStats_GetOrCreateProfile(sessionHealers, sourceGUID, cleanSourceName, healerClass)
+        local sessionHealers = HeroStats_GetActiveSessionHealers()
+        if sessionHealers then
+            local healer = HeroStats_GetOrCreateProfile(sessionHealers, sourceGUID, cleanSourceName, healerClass)
                 
-                -- Update master totals
-                healer.dispels = (healer.dispels or 0) + 1
+            -- Update master totals
+            healer.dispels = (healer.dispels or 0) + 1
                 
-                -- NEW v0.8.0: Fetch your own dispel ability name safely from the engine
-                local _, dispelSpellName = select(12, CombatLogGetCurrentEventInfo())
-                if dispelSpellName then
-                    if not healer.spellDispels then healer.spellDispels = {} end
-                    healer.spellDispels[dispelSpellName] = (healer.spellDispels[dispelSpellName] or 0) + 1
-                end
-                    
-                if HeroStatsSettings and HeroStatsSettings.overallData then
-                    local overallHealer = HeroStats_GetOrCreateProfile(HeroStatsSettings.overallData, sourceGUID, cleanSourceName, healerClass)
-                    overallHealer.dispels = (overallHealer.dispels or 0) + 1
-                    
-                    if dispelSpellName then
-                        if not overallHealer.spellDispels then overallHealer.spellDispels = {} end
-                        overallHealer.spellDispels[dispelSpellName] = (overallHealer.spellDispels[dispelSpellName] or 0) + 1
-                    end
-                end
-                coreFrame.RefreshStats()
+            -- NEW v0.8.0: Fetch your own dispel ability name safely from the engine
+            local _, dispelSpellName = select(12, CombatLogGetCurrentEventInfo())
+            if dispelSpellName then
+                if not healer.spellDispels then healer.spellDispels = {} end
+                healer.spellDispels[dispelSpellName] = (healer.spellDispels[dispelSpellName] or 0) + 1
             end
+                    
+            if HeroStatsSettings and HeroStatsSettings.overallData then
+                local overallHealer = HeroStats_GetOrCreateProfile(HeroStatsSettings.overallData, sourceGUID, cleanSourceName, healerClass)
+                overallHealer.dispels = (overallHealer.dispels or 0) + 1
+                    
+                if dispelSpellName then
+                    if not overallHealer.spellDispels then overallHealer.spellDispels = {} end
+                    overallHealer.spellDispels[dispelSpellName] = (overallHealer.spellDispels[dispelSpellName] or 0) + 1
+                end
+            end
+            coreFrame.RefreshStats()
         end
     end
 end;
 
---  RESURRECTION TRACKING ENGINE (Runs out-of-combat!)
+--  RESURRECTION TRACKING ENGINE (v0.10.0 - Recipient Tracking Enabled)
 local function OnEvent_RESURRECT(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags)
     local isCasterGroupMember = (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
                                 (bit.band(sourceFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
@@ -907,20 +918,39 @@ local function OnEvent_RESURRECT(eventType, sourceGUID, sourceName, sourceFlags,
 
     if isCasterGroupMember and sourceName then
         local cleanSourceName = string.match(sourceName, "([^-]+)")
-        local healerClass = groupRosterCache[cleanSourceName] or "UNKNOWN"
+        local sourceClass = groupRosterCache[cleanSourceName]
+        if sourceGUID == playerGUID and not sourceClass then _, sourceClass = UnitClass("player") end
+        sourceClass = sourceClass or "UNKNOWN"
             
-        if healerClass and ALLOWED_CLASSES[healerClass] then
-            local healer = HeroStats_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, healerClass)
-            healer.resurrects = healer.resurrects + 1
+        local sessionHealers = HeroStats_GetActiveSessionHealers()
+        if sessionHealers then
+            local healer = HeroStats_GetOrCreateProfile(sessionHealers, sourceGUID, cleanSourceName, sourceClass)
+            
+            -- Accumulate your master resurrection total count
+            healer.resurrects = (healer.resurrects or 0) + 1
                 
-            if HeroStatsSettings and HeroStatsSettings.overallData then
-                local overallHealer = HeroStats_GetOrCreateProfile(HeroStatsSettings.overallData, sourceGUID, cleanSourceName, healerClass)
-                overallHealer.resurrects = overallHealer.resurrects + 1
+            -- NEW v0.10.0 FEATURE: Extract the specific recipient name who accepted the res!
+            local cleanDestName = destName and string.match(destName, "([^-]+)")
+            if cleanDestName then
+                if not healer.resRecipients then healer.resRecipients = {} end
+                healer.resRecipients[cleanDestName] = (healer.resRecipients[cleanDestName] or 0) + 1
             end
-            coreFrame.RefreshStats()
+                
+            -- Synchronize flawlessly onto the master Overall database layers
+            if HeroStatsSettings and HeroStatsSettings.overallData then
+                local overallHealer = HeroStats_GetOrCreateProfile(HeroStatsSettings.overallData, sourceGUID, cleanSourceName, sourceClass)
+                overallHealer.resurrects = (overallHealer.resurrects or 0) + 1
+                
+                if cleanDestName then
+                    if not overallHealer.resRecipients then overallHealer.resRecipients = {} end
+                    overallHealer.resRecipients[cleanDestName] = (overallHealer.resRecipients[cleanDestName] or 0) + 1
+                end
+            end
+            if coreFrame.RefreshStats then coreFrame.RefreshStats() end
         end
     end
 end;
+
 
 --  DETECT MANA GAINED EFFECTS (v0.8.0 - Potions, Innervate, Mana Tide)
 local function OnEvent_MANAGAINS(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags)
@@ -942,28 +972,26 @@ local function OnEvent_MANAGAINS(eventType, sourceGUID, sourceName, sourceFlags,
             if destGUID == playerGUID and not destClass then _, destClass = UnitClass("player") end
             destClass = destClass or "UNKNOWN"
 
-            if ALLOWED_CLASSES[destClass] then
-                local sessionHealers = HeroStats_GetActiveSessionHealers()
-                if sessionHealers then
-                    local profile = HeroStats_GetOrCreateProfile(sessionHealers, destGUID, cleanDestName, destClass)
-                    profile.manaGained = (profile.manaGained or 0) + amount
+            local sessionHealers = HeroStats_GetActiveSessionHealers()
+            if sessionHealers then
+                local profile = HeroStats_GetOrCreateProfile(sessionHealers, destGUID, cleanDestName, destClass)
+                profile.manaGained = (profile.manaGained or 0) + amount
                     
-                    if spellName then
-                        if not profile.spellManaGained then profile.spellManaGained = {} end
-                        profile.spellManaGained[spellName] = (profile.spellManaGained[spellName] or 0) + amount
-                    end
-
-                    if HeroStatsSettings and HeroStatsSettings.overallData then
-                        local overallProfile = HeroStats_GetOrCreateProfile(HeroStatsSettings.overallData, destGUID, cleanDestName, destClass)
-                        overallProfile.manaGained = (overallProfile.manaGained or 0) + amount
-                        
-                        if spellName then
-                            if not overallProfile.spellManaGained then overallProfile.spellManaGained = {} end
-                            overallProfile.spellManaGained[spellName] = (overallProfile.spellManaGained[spellName] or 0) + amount
-                        end
-                    end
-                    coreFrame.RefreshStats()
+                if spellName then
+                    if not profile.spellManaGained then profile.spellManaGained = {} end
+                    profile.spellManaGained[spellName] = (profile.spellManaGained[spellName] or 0) + amount
                 end
+
+                if HeroStatsSettings and HeroStatsSettings.overallData then
+                    local overallProfile = HeroStats_GetOrCreateProfile(HeroStatsSettings.overallData, destGUID, cleanDestName, destClass)
+                    overallProfile.manaGained = (overallProfile.manaGained or 0) + amount
+                        
+                    if spellName then
+                        if not overallProfile.spellManaGained then overallProfile.spellManaGained = {} end
+                        overallProfile.spellManaGained[spellName] = (overallProfile.spellManaGained[spellName] or 0) + amount
+                    end
+                end
+                coreFrame.RefreshStats()
             end
         end
     end
@@ -1375,6 +1403,11 @@ function HeroStats_ReportCurrentPageToChat()
             end
         end
     end
+end
+
+-- FIXED v0.10.0: Global API bridge to retrieve the local frame object securely
+function HeroStats_GetCoreFrame()
+    return coreFrame
 end
 
 -- end herostatscore.lua

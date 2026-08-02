@@ -196,12 +196,13 @@ configLoader:RegisterEvent("ADDON_LOADED")
 configLoader:SetScript("OnEvent", function(self, event, addonName)
     if addonName == "HeroStats" then
         if HeroStatsSettings then
+            HeroStatsSettings.activeFilterState = HeroStatsSettings.activeFilterState or 1
             if not HeroStatsSettings.maxSessionsLimit then HeroStatsSettings.maxSessionsLimit = 20 end
             if not HeroStatsSettings.groupJoinBehavior then HeroStatsSettings.groupJoinBehavior = 3 end
             if not HeroStatsSettings.reportChannelMode then HeroStatsSettings.reportChannelMode = 1 end
             if not HeroStatsSettings.reportCustomChannelNum then HeroStatsSettings.reportCustomChannelNum = 1 end
             if not HeroStatsSettings.reportLinesLimit then HeroStatsSettings.reportLinesLimit = 5 end
-            
+
             slider:SetValue(HeroStatsSettings.maxSessionsLimit)
             linesSlider:SetValue(HeroStatsSettings.reportLinesLimit)
             HEROSTATS_MAX_SAVED_SESSIONS = HeroStatsSettings.maxSessionsLimit
