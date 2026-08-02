@@ -523,18 +523,29 @@ local function OnEvent_SPELL_CAST_SUCCESS(eventType, sourceGUID, sourceName, sou
     end
 end;
 
--- STANDARD DAMAGE DONE & DAMAGE TAKEN MOTORS (v0.8.0 - Rank-Separated)
+-- STANDARD DAMAGE DONE & DAMAGE TAKEN MOTORS (v0.10.0 - Perfect DoT Suffix Placement)
 local function OnEvent_DAMAGE(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags)
-    local amount
+    local amount = 0
+    local spellName = "Melee"
+    local spellID = nil
+    local spellModifier = nil
 
-    -- SWING_DAMAGE uses argument 12, while all SPELL and DoT variants use argument 15
+    -- Explicit single-line selections prevents multi-assignment variables from bleeding into each other
     if eventType == "SWING_DAMAGE" then
-        amount = select(12, CombatLogGetCurrentEventInfo())
+        amount = select(12, CombatLogGetCurrentEventInfo()) or 0
+        spellName = "Melee"
     else
-        amount = select(15, CombatLogGetCurrentEventInfo())
-    end
+        -- For all SPELL and PERIODIC (DoT) hits:
+        -- Argument 12 = SpellID, Argument 13 = SpellName, Argument 15 = Damage Amount
+        spellID = select(12, CombatLogGetCurrentEventInfo())
+        spellName = select(13, CombatLogGetCurrentEventInfo()) or "Unknown Spell"
+        amount = select(15, CombatLogGetCurrentEventInfo()) or 0
         
-    amount = amount or 0
+        -- Intercept DoT variants cleanly before processing databases
+        if eventType == "SPELL_PERIODIC_DAMAGE" then
+            spellModifier = " (DoT)"
+        end
+    end
 
     if amount > 0 then
         -- A: DAMAGE DONE DETECTION (Who is dealing damage?)
@@ -547,9 +558,7 @@ local function OnEvent_DAMAGE(eventType, sourceGUID, sourceName, sourceFlags, de
             local cleanSourceName = string.match(sourceName, "([^-]+)")
             local sourceClass = groupRosterCache[cleanSourceName] or "UNKNOWN"
                 
-            -- Fetch spell context and combine it dynamically with the Rank subtext
-            local spellID, spellName = select(12, CombatLogGetCurrentEventInfo())
-            local fullSpellName = spellName
+            local fullSpellName = spellName or "Unknown"
                 
             if eventType == "SWING_DAMAGE" then 
                 fullSpellName = "Melee" 
@@ -558,6 +567,12 @@ local function OnEvent_DAMAGE(eventType, sourceGUID, sourceName, sourceFlags, de
                 if rankText and rankText ~= "" then
                     fullSpellName = string.format("%s (%s)", spellName, rankText)
                 end
+            end
+
+            -- FIXED v0.10.0: Perfect visual alignment for your Top 10 lists!
+            -- Example output: "Fireball (Rank 11) (DoT)"
+            if fullSpellName and spellModifier then 
+                fullSpellName = fullSpellName .. spellModifier 
             end
                 
             local profile = HeroStats_GetOrCreateProfile(activeHealers, sourceGUID, cleanSourceName, sourceClass)
@@ -580,7 +595,7 @@ local function OnEvent_DAMAGE(eventType, sourceGUID, sourceName, sourceFlags, de
             coreFrame.RefreshStats()
         end
 
-        -- DAMAGE TAKEN DETECTION (Who is taking damage? - FIXED v0.8.0)
+        -- DAMAGE TAKEN DETECTION (Who is taking damage?)
         local isDestGroupMember = (destGUID == playerGUID) or
                                     (bit.band(destFlags, COMBATLOG_OBJECT_AFFILIATION_MINE) ~= 0) or 
                                     (bit.band(destFlags, COMBATLOG_OBJECT_AFFILIATION_PARTY) ~= 0) or 
@@ -590,14 +605,15 @@ local function OnEvent_DAMAGE(eventType, sourceGUID, sourceName, sourceFlags, de
             local cleanDestName = string.match(destName, "([^-]+)")
             local destClass = groupRosterCache[cleanDestName] or "UNKNOWN"
                 
-            -- Extract the monster spell context safely based on the specific hit event type
-            local spellName = "Melee"
-            if eventType == "SPELL_DAMAGE" or eventType == "SPELL_PERIODIC_DAMAGE" or eventType == "RANGE_DAMAGE" then
-                _, spellName = select(12, CombatLogGetCurrentEventInfo())
+            -- FIXED v0.10.0: Append modifier directly to your current spell label 
+            -- so monster DoTs are also displayed with flawless formatting!
+            local currentSpellLabel = spellName or "Melee"
+            if currentSpellLabel ~= "Melee" and spellModifier then
+                currentSpellLabel = currentSpellLabel .. spellModifier
             end
                 
             local cleanSourceName = sourceName and string.match(sourceName, "([^-]+)") or "Environment"
-            local combinedSourceKey = string.format("%s - %s", cleanSourceName, spellName or "Unknown")
+            local combinedSourceKey = string.format("%s - %s", cleanSourceName, currentSpellLabel)
 
             -- v0.8.0: Detect Blizzard Damage School Bitmasks to determine text coloring
             local schoolColor = "physical"
@@ -612,7 +628,7 @@ local function OnEvent_DAMAGE(eventType, sourceGUID, sourceName, sourceFlags, de
             end
                 
             -- Manual override for Poison spells based on string context matching
-            if spellName and (string.find(string.lower(spellName), "poison") or string.find(string.lower(spellName), "toxin")) then
+            if currentSpellLabel and (string.find(string.lower(currentSpellLabel), "poison") or string.find(string.lower(currentSpellLabel), "toxin")) then
                 schoolColor = "poison"
             end
 
@@ -638,7 +654,7 @@ local function OnEvent_DAMAGE(eventType, sourceGUID, sourceName, sourceFlags, de
             end
             coreFrame.RefreshStats()
         end
-	end;
+    end;
 end;
 
 --  DIRECT HEALS & HOTS (v0.8.0 - Rank-Separated & Parameter Secured)

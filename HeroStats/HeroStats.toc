@@ -1,5 +1,5 @@
 ## Title: HeroStats - combat log statistics
-## Version: 0.9.0
+## Version: 0.10.0
 ## Author: mimma @ EU-pyrewood village
 ## Interface: 11509
 ## SavedVariablesPerCharacter: HeroStatsSettings
