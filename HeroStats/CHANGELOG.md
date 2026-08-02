@@ -1,5 +1,24 @@
 # HeroStats Changelog
 
+# Changelog - HeroStats v0.10.0
+
+## [Added]
+- Added: New "Damage Crits" tab – check your offensive crit percentages.
+- Added: New "Healing Crits" tab – check your defensive green crits.
+- Added: Next-gen Tri-State filter button (None -> Healers -> Your Class) with instant bar updates.
+- Added: The DoT-portion of a spell is now considered a separate damage entry.
+
+## [Changed]
+- Changed: Header text and icons refactored (Arcanite Ore for all classes, Holy Aura for healers).
+- Changed: Fully opened meters for all classes – Mage and Warrior healing now tracks perfectly.
+- Changed: Resurrection page upgraded to display the actual names of players brought back to life.
+- Changed: Death page unlocked to capture fatalities for every single raid group member.
+- Changed: Session selector cleaned up – the newest fight is now tagged as "Current session".
+
+## [Fixed]
+- Fixed: Added hard safety shields to completely block non-mana users from polluting the Mana Gained tab.
+- Fixed: Blocked warriors and rogues from sneaking onto the Overhealing Efficiency leaderboards.
+
 # Changelog - HeroStats v0.9.0
 
 ## [Added]
