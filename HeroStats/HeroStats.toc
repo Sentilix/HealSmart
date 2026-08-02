@@ -1,7 +1,8 @@
 ## Title: HeroStats - combat log statistics
-## Version: 0.10.0
+## Version: 0.10.1
 ## Author: mimma @ EU-pyrewood village
 ## Interface: 11509
+## IconTexture: Interface\Icons\Achievement_BG_TopHealer_AV
 ## SavedVariablesPerCharacter: HeroStatsSettings
 
 herostatsdb.lua

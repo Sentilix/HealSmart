@@ -252,9 +252,9 @@ function coreFrame.RefreshStats()
         end
     end
 
-    -- FIXED v0.10.0: Compile your clean, short window title before sorting loops
-    local viewTitle = pageRecord and pageRecord.title or "HeroStats"
-    viewTitle = string.format("%s (%s)", viewTitle, sessionLabel)
+    -- FIXED v0.10.1: Build your clean local viewTitle right here once
+    local baseTitle = pageRecord and pageRecord.title or "HeroStats"
+    local viewTitle = string.format("%s (%s)", baseTitle, sessionLabel)
 
     -- NEW v0.9.0: Dynamic Historical Time Calibration Pipeline
     local activeFightSeconds = HeroStats_CurrentFightDuration or 0 -- Default fallback
@@ -403,7 +403,6 @@ function coreFrame.RefreshStats()
 
     -- Render blank state if no dataset rows found (v0.8.0 Data-Driven Secured)
     if #sortedHealers == 0 then
-        local baseTitle = viewTitle or "HeroStats"
         local pageTitle = baseTitle .. " (" .. sessionLabel .. ")"
         if HeroStats_RenderTextMessage then HeroStats_RenderTextMessage(pageTitle, "") end
         return
@@ -1065,11 +1064,22 @@ local function OnEvent_RESURRECT(eventType, sourceGUID, sourceName, sourceFlags,
             -- Accumulate your master resurrection total count
             healer.resurrects = (healer.resurrects or 0) + 1
                 
-            -- NEW v0.10.0 FEATURE: Extract the specific recipient name who accepted the res!
             local cleanDestName = destName and string.match(destName, "([^-]+)")
             if cleanDestName then
                 if not healer.resRecipients then healer.resRecipients = {} end
-                healer.resRecipients[cleanDestName] = (healer.resRecipients[cleanDestName] or 0) + 1
+                
+                -- FIXED v0.10.1: Extract recipient class string from live group cache before writing data layers
+                local targetClass = groupRosterCache[cleanDestName] or "UNKNOWN"
+                if targetClass == "UNKNOWN" then
+                    local _, cFilename = UnitClass(cleanDestName)
+                    targetClass = cFilename or "UNKNOWN"
+                end
+
+                -- Convert your legacy flat counter matrix into an independent multi-dimensional sub-table
+                if not healer.resRecipients[cleanDestName] then
+                    healer.resRecipients[cleanDestName] = { amount = 0, class = targetClass }
+                end
+                healer.resRecipients[cleanDestName].amount = healer.resRecipients[cleanDestName].amount + 1
             end
                 
             -- Synchronize flawlessly onto the master Overall database layers
@@ -1079,13 +1089,25 @@ local function OnEvent_RESURRECT(eventType, sourceGUID, sourceName, sourceFlags,
                 
                 if cleanDestName then
                     if not overallHealer.resRecipients then overallHealer.resRecipients = {} end
-                    overallHealer.resRecipients[cleanDestName] = (overallHealer.resRecipients[cleanDestName] or 0) + 1
+                    
+                    -- Re-fetch or recycle target parameters for the global database archive
+                    local targetClass = groupRosterCache[cleanDestName] or "UNKNOWN"
+                    if targetClass == "UNKNOWN" then
+                        local _, cFilename = UnitClass(cleanDestName)
+                        targetClass = cFilename or "UNKNOWN"
+                    end
+
+                    if not overallHealer.resRecipients[cleanDestName] then
+                        overallHealer.resRecipients[cleanDestName] = { amount = 0, class = targetClass }
+                    end
+                    overallHealer.resRecipients[cleanDestName].amount = overallHealer.resRecipients[cleanDestName].amount + 1
                 end
             end
             if coreFrame.RefreshStats then coreFrame.RefreshStats() end
         end
     end
 end;
+
 
 
 --  DETECT MANA GAINED EFFECTS (v0.8.0 - Potions, Innervate, Mana Tide)

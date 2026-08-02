@@ -10,7 +10,7 @@ HeroStats_Pages = {
     [4]  = { name = "DAMAGE_TAKEN",  title = "4. Damage Taken" },
     [5]  = { name = "HEALING",       title = "5. Healing Done" },
     [6]  = { name = "HEAL_CRIT",      title = "6. Healing Crits" },
-    [7]  = { name = "OVERHEALING",   title = "7. Efficiency" },
+    [7]  = { name = "OVERHEALING",   title = "7. Overhealing" },
     [8]  = { name = "MANA_EFF",      title = "8. Mana Efficiency" },
     [9]  = { name = "MANA_GAINED",   title = "9. Mana Gained" },
     [10] = { name = "DISPELS",       title = "10. Dispels Done" },

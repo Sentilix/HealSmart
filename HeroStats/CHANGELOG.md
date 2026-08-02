@@ -1,4 +1,18 @@
-# HeroStats Changelog
+# Changelog - HeroStats v0.10.1
+
+## [Added]
+- Added: Right-click drop-down menu on all player bars with a safe "Copy to chat" verification step.
+- Added: "Officer Chat" integration added into the interface configuration options page, replaces "Yell".
+
+## [Changed]
+- Changed: Complete overhaul of the reporting engine – each tab now utilizes a dedicated, sandboxed function to eliminate cross-page data pollution.
+- Changed: Upgraded all primary layout bars to Button frames to fully support modern patch-safe mouse clicks.
+
+## [Fixed]
+- Fixed: Resolved a critical title duplication bug that appended multiple "(Current)" strings to the header.
+- Fixed: Smashed a fatal "nil value" crash on bar initialization caused by legacy click-registration APIs.
+- Fixed: Repaired a data mismatch on the Mana Efficiency tab where HPM values were showing as 0.0.
+- Fixed: Standardized the Mana Efficiency tooltip and chat output to always sort by highest HPM values.
 
 # Changelog - HeroStats v0.10.0
 

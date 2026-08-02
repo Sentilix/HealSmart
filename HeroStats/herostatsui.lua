@@ -428,7 +428,7 @@ end)
 
 local function CreateHealerBar(index)
     local currentBarWidth = container:GetWidth() - 22
-    local bar = CreateFrame("Frame", nil, scrollChild)
+    local bar = CreateFrame("Button", nil, scrollChild)
     bar:SetSize(currentBarWidth, HEROSTATS_BAR_HEIGHT)
     
     if index == 1 then
@@ -491,6 +491,294 @@ local function CreateHealerBar(index)
 
     uiBars[index] = bar
     return bar
+end
+
+-- FIXED v0.10.1: Dedicated reporter function for Damage Crits abilities
+local function HeroStats_Report_DamageCrits(playerData, channel, isCustom, customNum)
+    if not playerData or not playerData.spellCrits then return end
+    
+    local headerMsg = string.format("HeroStats - Top Damage Crits for %s:", playerData.name or "Unknown")
+    if isCustom and customNum then SendChatMessage(headerMsg, "CHANNEL", nil, customNum) else SendChatMessage(headerMsg, channel) end
+
+    local sortedSpells = {}
+    local totalSessionCritDmg = 0
+    for spellName, cr in pairs(playerData.spellCrits) do
+        local totalCritDmg = cr.dmg or 0
+        if totalCritDmg > 0 then
+            table.insert(sortedSpells, { name = spellName, crits = cr.crits or 0, dmg = totalCritDmg })
+            totalSessionCritDmg = totalSessionCritDmg + totalCritDmg
+        end
+    end
+    table.sort(sortedSpells, function(a, b) return a.dmg > b.dmg end)
+    if totalSessionCritDmg == 0 then totalSessionCritDmg = 1 end
+
+    for i = 1, math.min(5, #sortedSpells) do
+        local s = sortedSpells[i]
+        local spellCritSharePct = (s.dmg / totalSessionCritDmg) * 100
+        local formattedDmg = FormatDotNumber and FormatDotNumber(s.dmg) or s.dmg
+        local lineMsg = string.format("%d. %s: %s (%d crits) (%.1f%%)", i, s.name, formattedDmg, s.crits, spellCritSharePct)
+        if isCustom and customNum then SendChatMessage(lineMsg, "CHANNEL", nil, customNum) else SendChatMessage(lineMsg, channel) end
+    end
+end
+
+-- FIXED v0.10.1: Dedicated reporter function for Healing Crits abilities
+local function HeroStats_Report_HealingCrits(playerData, channel, isCustom, customNum)
+    if not playerData or not playerData.spellHealCrits then return end
+    
+    local headerMsg = string.format("HeroStats - Top Healing Crits for %s:", playerData.name or "Unknown")
+    if isCustom and customNum then SendChatMessage(headerMsg, "CHANNEL", nil, customNum) else SendChatMessage(headerMsg, channel) end
+
+    local sortedHeals = {}
+    local totalSessionCritHeal = 0
+    for spellName, cr in pairs(playerData.spellHealCrits) do
+        local totalCritHeal = cr.amt or 0
+        if totalCritHeal > 0 then
+            table.insert(sortedHeals, { name = spellName, crits = cr.crits or 0, amt = totalCritHeal })
+            totalSessionCritHeal = totalSessionCritHeal + totalCritHeal
+        end
+    end
+    table.sort(sortedHeals, function(a, b) return a.amt > b.amt end)
+    if totalSessionCritHeal == 0 then totalSessionCritHeal = 1 end
+
+    for i = 1, math.min(5, #sortedHeals) do
+        local h = sortedHeals[i]
+        local spellCritSharePct = (h.amt / totalSessionCritHeal) * 100
+        local formattedHeal = FormatDotNumber and FormatDotNumber(h.amt) or h.amt
+        local lineMsg = string.format("%d. %s: %s (%d crits) (%.1f%%)", i, h.name, formattedHeal, h.crits, spellCritSharePct)
+        if isCustom and customNum then SendChatMessage(lineMsg, "CHANNEL", nil, customNum) else SendChatMessage(lineMsg, channel) end
+    end
+end
+
+-- FIXED v0.10.1: Dedicated reporter function for Damage Done breakdown
+local function HeroStats_Report_DamageDone(playerData, channel, isCustom, customNum, fightSeconds)
+    if not playerData or not playerData.spellDamage then return end
+    
+    local dps = (fightSeconds > 0) and (playerData.damageDone / fightSeconds) or 0
+    local formattedTotal = FormatDotNumber and FormatDotNumber(playerData.damageDone) or playerData.damageDone
+    local headerMsg = string.format("HeroStats - Top Damage abilities for %s: %s (%.0f DPS):", playerData.name or "Unknown", formattedTotal, dps)
+    if isCustom and customNum then SendChatMessage(headerMsg, "CHANNEL", nil, customNum) else SendChatMessage(headerMsg, channel) end
+
+    local sortedSpells = {}
+    for spellName, amt in pairs(playerData.spellDamage) do
+        if amt > 0 then table.insert(sortedSpells, { name = spellName, amount = amt }) end
+    end
+    table.sort(sortedSpells, function(a, b) return a.amount > b.amount end)
+
+    for i = 1, math.min(5, #sortedSpells) do
+        local s = sortedSpells[i]
+        local sharePct = (playerData.damageDone > 0) and ((s.amount / playerData.damageDone) * 100) or 0
+        local formattedAmt = FormatDotNumber and FormatDotNumber(s.amount) or s.amount
+        local lineMsg = string.format("%d. %s: %s (%.1f%%)", i, s.name, formattedAmt, sharePct)
+        if isCustom and customNum then SendChatMessage(lineMsg, "CHANNEL", nil, customNum) else SendChatMessage(lineMsg, channel) end
+    end
+end
+
+-- FIXED v0.10.1: Dedicated reporter function for Healing Done breakdown
+local function HeroStats_Report_HealingDone(playerData, channel, isCustom, customNum, fightSeconds)
+    if not playerData or not playerData.spellHeals then return end
+    
+    local hps = (fightSeconds > 0) and (playerData.effective / fightSeconds) or 0
+    local formattedTotal = FormatDotNumber and FormatDotNumber(playerData.effective) or playerData.effective
+    local headerMsg = string.format("HeroStats - Top Healing abilities for %s: %s (%.0f HPS):", playerData.name or "Unknown", formattedTotal, hps)
+    if isCustom and customNum then SendChatMessage(headerMsg, "CHANNEL", nil, customNum) else SendChatMessage(headerMsg, channel) end
+
+    local sortedSpells = {}
+    for spellName, hData in pairs(playerData.spellHeals) do
+        if hData.effective > 0 then table.insert(sortedSpells, { name = spellName, amount = hData.effective, overheal = hData.overheal or 0 }) end
+    end
+    table.sort(sortedSpells, function(a, b) return a.amount > b.amount end)
+
+    for i = 1, math.min(5, #sortedSpells) do
+        local s = sortedSpells[i]
+        local sharePct = (playerData.effective > 0) and ((s.amount / playerData.effective) * 100) or 0
+        local totalSpellHeal = s.amount + s.overheal
+        local ohPct = (totalSpellHeal > 0) and ((s.overheal / totalSpellHeal) * 100) or 0
+        local formattedAmt = FormatDotNumber and FormatDotNumber(s.amount) or s.amount
+        local lineMsg = string.format("%d. %s: %s (%.1f%%) [OH: %.0f%%]", i, s.name, formattedAmt, sharePct, ohPct)
+        if isCustom and customNum then SendChatMessage(lineMsg, "CHANNEL", nil, customNum) else SendChatMessage(lineMsg, channel) end
+    end
+end
+
+-- FIXED v0.10.1: Dedicated reporter function for Damage Taken breakdown
+local function HeroStats_Report_DamageTaken(playerData, channel, isCustom, customNum, fightSeconds)
+    if not playerData or not playerData.spellTaken then return end
+    
+    local dtps = (fightSeconds > 0) and (playerData.damageTaken / fightSeconds) or 0
+    local formattedTotal = FormatDotNumber and FormatDotNumber(playerData.damageTaken) or playerData.damageTaken
+    local headerMsg = string.format("HeroStats - Top Damage Taken for %s: %s (%.0f DTPS):", playerData.name or "Unknown", formattedTotal, dtps)
+    if isCustom and customNum then SendChatMessage(headerMsg, "CHANNEL", nil, customNum) else SendChatMessage(headerMsg, channel) end
+
+    local sortedSpells = {}
+    for spellName, amt in pairs(playerData.spellTaken) do
+        if amt > 0 then table.insert(sortedSpells, { name = spellName, amount = amt }) end
+    end
+    table.sort(sortedSpells, function(a, b) return a.amount > b.amount end)
+
+    for i = 1, math.min(5, #sortedSpells) do
+        local s = sortedSpells[i]
+        local sharePct = (playerData.damageTaken > 0) and ((s.amount / playerData.damageTaken) * 100) or 0
+        local formattedAmt = FormatDotNumber and FormatDotNumber(s.amount) or s.amount
+        local lineMsg = string.format("%d. %s: %s (%.1f%%)", i, s.name, formattedAmt, sharePct)
+        if isCustom and customNum then SendChatMessage(lineMsg, "CHANNEL", nil, customNum) else SendChatMessage(lineMsg, channel) end
+    end
+end
+
+-- FIXED v0.10.1: Dedicated reporter function for Overhealing Efficiency breakdown
+local function HeroStats_Report_Efficiency(playerData, channel, isCustom, customNum)
+    if not playerData or not playerData.spellHeals then return end
+    
+    local headerMsg = string.format("HeroStats - OH abilities for %s (%.1f%% Efficiency):", playerData.name or "Unknown", playerData.percent or 0)
+    if isCustom and customNum then SendChatMessage(headerMsg, "CHANNEL", nil, customNum) else SendChatMessage(headerMsg, channel) end
+
+    local sortedSpells = {}
+    for spellName, hData in pairs(playerData.spellHeals) do
+        local total = (hData.effective or 0) + (hData.overheal or 0)
+        if total > 0 then table.insert(sortedSpells, { name = spellName, effective = hData.effective or 0, overheal = hData.overheal or 0, total = total }) end
+    end
+    table.sort(sortedSpells, function(a, b) return b.overheal > a.overheal end)
+
+    for i = 1, math.min(5, #sortedSpells) do
+        local s = sortedSpells[i]
+        local spellEffPct = (s.total > 0) and ((s.effective / s.total) * 100) or 0
+        local formattedOH = FormatDotNumber and FormatDotNumber(s.overheal) or s.overheal
+        local lineMsg = string.format("%d. %s: %s Overheal (%.1f%%)", i, s.name, formattedOH, spellEffPct)
+        if isCustom and customNum then SendChatMessage(lineMsg, "CHANNEL", nil, customNum) else SendChatMessage(lineMsg, channel) end
+    end
+end
+
+-- FIXED v0.10.1: Dedicated reporter function for Mana Efficiency (HPM) breakdown
+local function HeroStats_Report_ManaEff(playerData, channel, isCustom, customNum)
+    if not playerData or not playerData.spellMana then return end
+    
+    local headerMsg = string.format("HeroStats - Heal per Mana for %s (%.1f HPM):", playerData.name or "Unknown", playerData.hpm or 0)
+    if isCustom and customNum then SendChatMessage(headerMsg, "CHANNEL", nil, customNum) else SendChatMessage(headerMsg, channel) end
+
+    local sortedSpells = {}
+    for spellName, mData in pairs(playerData.spellMana) do
+        local mUsed = mData.manaUsed or 0
+        if mUsed > 0 then
+            -- Cross-reference with your primary spellHeals dictionary to fetch the true effective healing value
+            local trueEffective = mData.effective or 0
+            if trueEffective == 0 and playerData.spellHeals and playerData.spellHeals[spellName] then
+                trueEffective = playerData.spellHeals[spellName].effective or 0
+            end
+            
+            local spellHPM = trueEffective / mUsed
+            table.insert(sortedSpells, { name = spellName, hpm = spellHPM, used = mUsed })
+        end
+    end
+    table.sort(sortedSpells, function(a, b) return a.hpm > b.hpm end)
+
+    for i = 1, math.min(5, #sortedSpells) do
+        local s = sortedSpells[i]
+        local formattedMana = FormatDotNumber and FormatDotNumber(s.used) or s.used
+        
+        local lineMsg = string.format("%d. %s %s mana (%.1f HPM)", i, s.name, formattedMana, s.hpm)
+        if isCustom and customNum then SendChatMessage(lineMsg, "CHANNEL", nil, customNum) else SendChatMessage(lineMsg, channel) end
+    end
+end
+
+-- FIXED v0.10.1: Dedicated reporter function for Mana Gained breakdown
+local function HeroStats_Report_ManaGained(playerData, channel, isCustom, customNum)
+    if not playerData or not playerData.spellManaGained then return end
+    
+    local formattedTotal = FormatDotNumber and FormatDotNumber(playerData.manaGained) or playerData.manaGained
+    local headerMsg = string.format("HeroStats - Mana Gained Breakdown for %s: %s total mana:", playerData.name or "Unknown", formattedTotal)
+    if isCustom and customNum then SendChatMessage(headerMsg, "CHANNEL", nil, customNum) else SendChatMessage(headerMsg, channel) end
+
+    local sortedSpells = {}
+    for spellName, amt in pairs(playerData.spellManaGained) do
+        if amt > 0 then table.insert(sortedSpells, { name = spellName, amount = amt }) end
+    end
+    table.sort(sortedSpells, function(a, b) return a.amount > b.amount end)
+
+    for i = 1, math.min(5, #sortedSpells) do
+        local s = sortedSpells[i]
+        local formattedAmt = FormatDotNumber and FormatDotNumber(s.amount) or s.amount
+        local lineMsg = string.format("%d. %s: +%s mana", i, s.name, formattedAmt)
+        if isCustom and customNum then SendChatMessage(lineMsg, "CHANNEL", nil, customNum) else SendChatMessage(lineMsg, channel) end
+    end
+end
+
+-- FIXED v0.10.1: Dedicated reporter function for Dispels Done breakdown
+local function HeroStats_Report_Dispels(playerData, channel, isCustom, customNum)
+    if not playerData or not playerData.spellDispels then return end
+    
+    local headerMsg = string.format("HeroStats - Dispels Breakdown for %s (%d total):", playerData.name or "Unknown", playerData.dispels or 0)
+    if isCustom and customNum then SendChatMessage(headerMsg, "CHANNEL", nil, customNum) else SendChatMessage(headerMsg, channel) end
+
+    local sortedSpells = {}
+    for spellName, amt in pairs(playerData.spellDispels) do
+        if amt > 0 then table.insert(sortedSpells, { name = spellName, amount = amt }) end
+    end
+    table.sort(sortedSpells, function(a, b) return a.amount > b.amount end)
+
+    for i = 1, math.min(5, #sortedSpells) do
+        local s = sortedSpells[i]
+        local lineMsg = string.format("%d. %s: %d dispels", i, s.name, s.amount)
+        if isCustom and customNum then SendChatMessage(lineMsg, "CHANNEL", nil, customNum) else SendChatMessage(lineMsg, channel) end
+    end
+end
+
+-- FIXED v0.10.1: Dedicated reporter function for Applied Buffs breakdown
+local function HeroStats_Report_Buffs(playerData, channel, isCustom, customNum)
+    if not playerData or not playerData.spellBuffs then return end
+    
+    local headerMsg = string.format("HeroStats - Applied Buffs Breakdown for %s (%d total):", playerData.name or "Unknown", playerData.buffs or 0)
+    if isCustom and customNum then SendChatMessage(headerMsg, "CHANNEL", nil, customNum) else SendChatMessage(headerMsg, channel) end
+
+    local sortedSpells = {}
+    for spellName, amt in pairs(playerData.spellBuffs) do
+        if amt > 0 then table.insert(sortedSpells, { name = spellName, amount = amt }) end
+    end
+    table.sort(sortedSpells, function(a, b) return a.amount > b.amount end)
+
+    for i = 1, math.min(5, #sortedSpells) do
+        local s = sortedSpells[i]
+        local lineMsg = string.format("%d. %s: %d casts", i, s.name, s.amount)
+        if isCustom and customNum then SendChatMessage(lineMsg, "CHANNEL", nil, customNum) else SendChatMessage(lineMsg, channel) end
+    end
+end
+
+-- FIXED v0.10.1: Dedicated reporter function for Raid Deaths log breakdown
+local function HeroStats_Report_Deaths(playerData, channel, isCustom, customNum)
+    if not playerData or not playerData.deathCauses then return end
+    
+    local headerMsg = string.format("HeroStats - Fatal Damage Log for %s (%d deaths):", playerData.name or "Unknown", playerData.deaths or 0)
+    if isCustom and customNum then SendChatMessage(headerMsg, "CHANNEL", nil, customNum) else SendChatMessage(headerMsg, channel) end
+
+    local sortedSpells = {}
+    for spellName, amt in pairs(playerData.deathCauses) do
+        if amt > 0 then table.insert(sortedSpells, { name = spellName, amount = amt }) end
+    end
+    table.sort(sortedSpells, function(a, b) return a.amount > b.amount end)
+
+    for i = 1, math.min(5, #sortedSpells) do
+        local s = sortedSpells[i]
+        local lineMsg = string.format("%d. %s: %d fatalities", i, s.name, s.amount)
+        if isCustom and customNum then SendChatMessage(lineMsg, "CHANNEL", nil, customNum) else SendChatMessage(lineMsg, channel) end
+    end
+end
+
+-- FIXED v0.10.1: Updated resurrect chat reporter to support the new database sub-table matrix
+local function HeroStats_Report_Resurrects(playerData, channel, isCustom, customNum)
+    if not playerData or not playerData.resRecipients then return end
+    
+    local headerMsg = string.format("HeroStats - Resurrect Recipients for %s (%d casted):", playerData.name or "Unknown", playerData.resurrects or 0)
+    if isCustom and customNum then SendChatMessage(headerMsg, "CHANNEL", nil, customNum) else SendChatMessage(headerMsg, channel) end
+
+    local sortedSpells = {}
+    for targetName, rData in pairs(playerData.resRecipients) do
+        local tAmt = type(rData) == "table" and rData.amount or rData
+        if tAmt > 0 then table.insert(sortedSpells, { name = targetName, amount = tAmt }) end
+    end
+    table.sort(sortedSpells, function(a, b) return a.amount > b.amount end)
+
+    for i = 1, math.min(5, #sortedSpells) do
+        local s = sortedSpells[i]
+        local lineMsg = string.format("%d. %s: Brought back %d times", i, s.name, s.amount)
+        if isCustom and customNum then SendChatMessage(lineMsg, "CHANNEL", nil, customNum) else SendChatMessage(lineMsg, channel) end
+    end
 end
 
 function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffective, viewTitle)
@@ -614,6 +902,184 @@ function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
             bar.rightText:SetText(string.format("%d Resses", data.resurrects or 0))
         end
 
+        -- OnEnter: Hover view pulls from the shared data matrix
+        bar:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
+            GameTooltip:ClearLines()
+            
+            local titleText = (viewType == "DMG_CRIT") and "Top Critical Damage Abilities:" or "Top Critical Healing Abilities:"
+            GameTooltip:AddLine(titleText, 1, 1, 1)
+            
+            local textLines = HeroStats_GetTooltipLines(data, viewType)
+            if #textLines > 0 then
+                for _, line in ipairs(textLines) do
+                    -- Splits the compiled text cleanly into a standard golden layout tooltip line
+                    local namePart, statPart = string.match(line, "(.-):%s*(.*)")
+                    if namePart and statPart then
+                        GameTooltip:AddDoubleLine(namePart, statPart, 0.8, 0.8, 0.8, 1, 0.82, 0)
+                    else
+                        GameTooltip:AddLine(line, 0.8, 0.8, 0.8)
+                    end
+                end
+            else
+                local fallbackText = (viewType == "DMG_CRIT") and "No critical damage records found." or "No critical healing records found."
+                GameTooltip:AddLine(fallbackText, 0.6, 0.6, 0.6, true)
+            end
+            GameTooltip:Show()
+        end)
+
+        bar:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+        bar:RegisterForClicks("RightButtonUp")
+        -- FIXED v0.10.1: Localized text compiler generates strict data lines for chat output
+        local function HeroStats_GetTooltipLines(targetData, currentView)
+            local lines = {}
+            if currentView == "DMG_CRIT" and targetData.spellCrits then
+                local sortedSpells = {}
+                local totalSessionCritDmg = 0
+                for spellName, cr in pairs(targetData.spellCrits) do
+                    local totalCritDmg = cr.dmg or 0
+                    if totalCritDmg > 0 then
+                        table.insert(sortedSpells, { name = spellName, crits = cr.crits or 0, dmg = totalCritDmg })
+                        totalSessionCritDmg = totalSessionCritDmg + totalCritDmg
+                    end
+                end
+                table.sort(sortedSpells, function(a, b) return a.dmg > b.dmg end)
+                if totalSessionCritDmg == 0 then totalSessionCritDmg = 1 end
+
+                for i = 1, math.min(5, #sortedSpells) do
+                    local s = sortedSpells[i]
+                    local spellCritSharePct = (s.dmg / totalSessionCritDmg) * 100
+                    local formattedDmg = FormatDotNumber and FormatDotNumber(s.dmg) or s.dmg
+                    table.insert(lines, string.format("%d. %s: %s (%d crits) (%.1f%%)", i, s.name, formattedDmg, s.crits, spellCritSharePct))
+                end
+            elseif currentView == "HEAL_CRIT" and targetData.spellHealCrits then
+                local sortedHeals = {}
+                local totalSessionCritHeal = 0
+                for spellName, cr in pairs(targetData.spellHealCrits) do
+                    local totalCritHeal = cr.amt or 0
+                    if totalCritHeal > 0 then
+                        table.insert(sortedHeals, { name = spellName, crits = cr.crits or 0, amt = totalCritHeal })
+                        totalSessionCritHeal = totalSessionCritHeal + totalCritHeal
+                    end
+                end
+                table.sort(sortedHeals, function(a, b) return a.amt > b.amt end)
+                if totalSessionCritHeal == 0 then totalSessionCritHeal = 1 end
+
+                for i = 1, math.min(5, #sortedHeals) do
+                    local h = sortedHeals[i]
+                    local spellCritSharePct = (h.amt / totalSessionCritHeal) * 100
+                    local formattedHeal = FormatDotNumber and FormatDotNumber(h.amt) or h.amt
+                    table.insert(lines, string.format("%d. %s: %s (%d crits) (%.1f%%)", i, h.name, formattedHeal, h.crits, spellCritSharePct))
+                end
+            end
+            return lines
+        end
+
+        -- OnEnter: Standard hover action
+        bar:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
+            GameTooltip:ClearLines()
+            
+            local titleText = (viewType == "DMG_CRIT") and "Top Critical Damage Abilities:" or "Top Critical Healing Abilities:"
+            GameTooltip:AddLine(titleText, 1, 1, 1)
+            
+            local textLines = HeroStats_GetTooltipLines(data, viewType)
+            if #textLines > 0 then
+                for _, line in ipairs(textLines) do
+                    local namePart, statPart = string.match(line, "(.-):%s*(.*)")
+                    if namePart and statPart then
+                        GameTooltip:AddDoubleLine(namePart, statPart, 0.8, 0.8, 0.8, 1, 0.82, 0)
+                    else
+                        GameTooltip:AddLine(line, 0.8, 0.8, 0.8)
+                    end
+                end
+            else
+                local fallbackText = (viewType == "DMG_CRIT") and "No critical damage records found." or "No critical healing records found."
+                GameTooltip:AddLine(fallbackText, 0.6, 0.6, 0.6, true)
+            end
+            GameTooltip:Show()
+        end)
+
+        bar:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+        -- OnClick Dropdown Engine
+        bar:RegisterForClicks("RightButtonUp")
+        bar:SetScript("OnClick", function(self, button)
+            if button == "RightButton" and data and HeroStatsSettings then
+                -- FREEZE SCOPE: Freeze player dataset and active page type immediately
+                local clickedData = data
+                local clickedViewType = viewType
+                
+                local channel = "SAY"
+                local channelLabel = "Say"
+                local mode = HeroStatsSettings.reportChannelMode or 1
+                local isCustomChannel = false
+                
+                if mode == 1 then
+                    channel = IsInRaid() and "RAID" or (IsInGroup() and "PARTY" or "SAY")
+                    channelLabel = IsInRaid() and "Raid" or (IsInGroup() and "Party" or "Say")
+                elseif mode == 2 then
+                    channel = "SAY"
+                    channelLabel = "Say"
+                elseif mode == 3 then
+                    channel = "GUILD"
+                    channelLabel = "Guild"
+                elseif mode == 4 then
+                    channel = "OFFICER"
+                    channelLabel = "Officer"
+                else
+                    isCustomChannel = true
+                    local customChannelNum = HeroStatsSettings.reportCustomChannelNum or 1
+                    channelLabel = "Channel #" .. customChannelNum
+                end
+
+                local function ReportCallback()
+                    local customChannelNum = HeroStatsSettings.reportCustomChannelNum
+                    
+                    if clickedViewType == "DAMAGE_DONE" then
+                        HeroStats_Report_DamageDone(clickedData, channel, isCustomChannel, customChannelNum, fightSeconds)
+                    elseif clickedViewType == "DMG_CRIT" then
+                        HeroStats_Report_DamageCrits(clickedData, channel, isCustomChannel, customChannelNum)
+                    elseif clickedViewType == "DAMAGE_TAKEN" then
+                        HeroStats_Report_DamageTaken(clickedData, channel, isCustomChannel, customChannelNum, fightSeconds)
+                    elseif clickedViewType == "HEALING" then
+                        HeroStats_Report_HealingDone(clickedData, channel, isCustomChannel, customChannelNum, fightSeconds)
+                    elseif clickedViewType == "HEAL_CRIT" then
+                        HeroStats_Report_HealingCrits(clickedData, channel, isCustomChannel, customChannelNum)
+                    elseif clickedViewType == "OVERHEALING" then
+                        HeroStats_Report_Efficiency(clickedData, channel, isCustomChannel, customChannelNum)
+                    elseif clickedViewType == "MANA_EFF" then
+                        HeroStats_Report_ManaEff(clickedData, channel, isCustomChannel, customChannelNum)
+                    elseif clickedViewType == "MANA_GAINED" then
+                        HeroStats_Report_ManaGained(clickedData, channel, isCustomChannel, customChannelNum)
+                    elseif clickedViewType == "DISPELS" then
+                        HeroStats_Report_Dispels(clickedData, channel, isCustomChannel, customChannelNum)
+                    elseif clickedViewType == "BUFFS" then
+                        HeroStats_Report_Buffs(clickedData, channel, isCustomChannel, customChannelNum)
+                    elseif clickedViewType == "DEATHS" then
+                        HeroStats_Report_Deaths(clickedData, channel, isCustomChannel, customChannelNum)
+                    elseif clickedViewType == "RESURRECTS" then
+                        HeroStats_Report_Resurrects(clickedData, channel, isCustomChannel, customChannelNum)
+                    end
+                end
+
+                local menuList = {
+                    { text = "Copy to chat (" .. channelLabel .. ")", func = ReportCallback, notCheckable = true },
+                    { text = "Cancel", func = function() end, notCheckable = true }
+                }
+                
+                local menuFrame = HeroStatsReportMenuFrame or CreateFrame("Frame", "HeroStatsReportMenuFrame", UIParent, "UIDropDownMenuTemplate")
+                UIDropDownMenu_Initialize(menuFrame, function(self, level)
+                    for _, item in ipairs(menuList) do
+                        UIDropDownMenu_AddButton(item, level)
+                    end
+                end, "MENU")
+                
+                ToggleDropDownMenu(1, nil, menuFrame, "cursor", 0, 0)
+            end
+        end)
+
         -- NEW v0.9.0: Fully Data-Driven Text Routed Tooltip Engine (Server-Grafting Secured)
         bar:SetScript("OnEnter", function(self)
             local pageRecord = HeroStats_GetPageRecord(HeroStats_CurrentActivePage)
@@ -678,26 +1144,39 @@ function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
                     end
                 end
                 
-            elseif pageName == "MANA_EFF" then
-                GameTooltip:AddLine("Ability Yield Breakdown:", 1, 1, 1)
+            elseif viewType == "MANA_EFF" then
+                GameTooltip:AddLine("Top Mana Efficiency Abilities:", 1, 1, 1)
                 if data.spellMana and next(data.spellMana) ~= nil then
-                    local sortedManaSpells = {}
-                    for spellName, manaData in pairs(data.spellMana) do
-                        local rawHealAmt = (data.spellHeals and data.spellHeals[spellName]) and data.spellHeals[spellName].effective or 0
-                        table.insert(sortedManaSpells, { name = spellName, spent = manaData.manaUsed or 0, eff = rawHealAmt })
+                    local sortedSpells = {}
+                    for spellName, mData in pairs(data.spellMana) do
+                        local mUsed = mData.manaUsed or 0
+                        if mUsed > 0 then
+                            -- Cross-reference with your primary spellHeals table to fetch the true effective healing value
+                            local trueEffective = mData.effective or 0
+                            if trueEffective == 0 and data.spellHealCrits and data.spellHeals and data.spellHeals[spellName] then
+                                trueEffective = data.spellHeals[spellName].effective or 0
+                            end
+                            
+                            local spellHPM = trueEffective / mUsed
+                            table.insert(sortedSpells, { name = spellName, hpm = spellHPM, used = mUsed })
+                        end
                     end
-                    table.sort(sortedManaSpells, function(a, b) return a.spent > b.spent end)
-                    
-                    for i = 1, math.min(10, #sortedManaSpells) do
-                        local m = sortedManaSpells[i]
-                        local spellHpm = (m.spent > 0) and (m.eff / m.spent) or 0
-                        local formattedMana = FormatDotNumber and FormatDotNumber(m.spent) or m.spent
+                    -- FIXED v0.10.1: Sort descending based on factual HPM efficiency metrics to match chat output
+                    table.sort(sortedSpells, function(a, b) return a.hpm > b.hpm end)
+
+                    for i = 1, math.min(10, #sortedSpells) do
+                        local s = sortedSpells[i]
+                        local formattedMana = FormatDotNumber and FormatDotNumber(s.used) or s.used
                         
-                        GameTooltip:AddDoubleLine(i .. ". " .. m.name, string.format("%s mana (%.1f HPM)", formattedMana, spellHpm), 0.8, 0.8, 0.8, 1, 0.82, 0)
+                        -- Outputs identical layout symmetry: "1. Flash Heal (Rank 1) | 1,875 mana (3.0 HPM)" using golden design guidelines
+                        GameTooltip:AddDoubleLine(
+                            i .. ". " .. s.name,
+                            string.format("%s mana (%.1f HPM)", formattedMana, s.hpm),
+                            0.8, 0.8, 0.8, 1, 0.82, 0
+                        )
                     end
-                    GameTooltip:AddLine(" ")
-                    local formattedTotalMana = FormatDotNumber and FormatDotNumber(data.manaUsed) or data.manaUsed
-                    GameTooltip:AddDoubleLine("Total Combined Yield:", string.format("%s mana (%.1f HPM)", formattedTotalMana, data.hpm), 1, 1, 1, 1, 0.82, 0)
+                else
+                    GameTooltip:AddLine("No mana efficiency records found for this session.", 0.6, 0.6, 0.6, true)
                 end
                 
             elseif pageName == "MANA_GAINED" then
@@ -862,14 +1341,42 @@ function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
                 local personalSharePct = (data.deaths > 0) and 100 or 0
                 GameTooltip:AddDoubleLine("1. Deaths", string.format("%d (%.0f%%)", data.deaths or 0, personalSharePct), 0.8, 0.8, 0.8, 1, 0.82, 0)
  
-            elseif pageName == "RESURRECTS" then
-                GameTooltip:AddLine("Raid Resurrection Contribution:", 1, 1, 1)
-                local totalRaidResses = topRessValue or 1
-                if totalRaidResses == 0 then totalRaidResses = 1 end
-                local personalSharePct = (data.resurrects > 0) and ((data.resurrects / totalRaidResses) * 100) or 0
-                GameTooltip:AddDoubleLine("1. " .. data.name, string.format("%d (%.0f%%)", data.resurrects or 0, personalSharePct), 0.8, 0.8, 0.8, 1, 0.82, 0)
+            elseif viewType == "RESURRECTS" then
+                GameTooltip:AddLine("Top Resurrect Recipients:", 1, 1, 1)
+                if data.resRecipients and next(data.resRecipients) ~= nil then
+                    local sortedSpells = {}
+                    for targetName, rData in pairs(data.resRecipients) do
+                        -- Handle both old legacy single integers and your new sub-tables safely
+                        local tAmt = type(rData) == "table" and rData.amount or rData
+                        local tClass = type(rData) == "table" and rData.class or "UNKNOWN"
+                        
+                        if tAmt > 0 then 
+                            table.insert(sortedSpells, { name = targetName, amount = tAmt, class = tClass }) 
+                        end
+                    end
+                    table.sort(sortedSpells, function(a, b) return a.amount > b.amount end)
+
+                    for i = 1, math.min(10, #sortedSpells) do
+                        local s = sortedSpells[i]
+                        local r, g, b = 0.8, 0.8, 0.8 -- Default silver fallback color
+                        
+                        -- Read the class color directly from your stored dataset without hitting Blizzard API
+                        if s.class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[s.class] then
+                            local c = RAID_CLASS_COLORS[s.class]
+                            r, g, b = c.r, c.g, c.b
+                        end
+                        
+                        GameTooltip:AddDoubleLine(
+                            i .. ". " .. s.name,
+                            string.format("Brought back %d times", s.amount),
+                            r, g, b, 1, 0.82, 0
+                        )
+                    end
+                else
+                    GameTooltip:AddLine("No resurrect records found for this session.", 0.6, 0.6, 0.6, true)
+                end
             end
-            
+                        
             GameTooltip:Show()
         end)
 

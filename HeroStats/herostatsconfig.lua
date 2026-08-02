@@ -96,8 +96,8 @@ end
 
 local cbAuto   = CreateChatRadioButton("HeroStatsCBAuto", "/Raid or /Party (Instance)", -10)
 local cbSay    = CreateChatRadioButton("HeroStatsCBSay", "/say (Local Zone)", -35)
-local cbYell   = CreateChatRadioButton("HeroStatsCBYell", "/yell (Shout out loud)", -60)
-local cbGuild  = CreateChatRadioButton("HeroStatsCBGuild", "/guild (Guild members)", -85)
+local cbGuild  = CreateChatRadioButton("HeroStatsCBGuild", "/guild (Guild members)", -60)
+local cbOfficer = CreateChatRadioButton("HeroStatsCBOfficer", "/officer (Officer chat)", -85)
 local cbCustom = CreateChatRadioButton("HeroStatsCBCustom", "Custom Channel Number:", -110)
 
 local customChannelBox = CreateFrame("EditBox", "HeroStatsCustomChannelBox", configPanel, "InputBoxTemplate")
@@ -156,8 +156,8 @@ end)
 local function SyncChatRadioButtons(selectedChannelMode)
     cbAuto:SetChecked(selectedChannelMode == 1)
     cbSay:SetChecked(selectedChannelMode == 2)
-    cbYell:SetChecked(selectedChannelMode == 3)
-    cbGuild:SetChecked(selectedChannelMode == 4)
+    cbGuild:SetChecked(selectedChannelMode == 3)
+    cbOfficer:SetChecked(selectedChannelMode == 4)
     cbCustom:SetChecked(selectedChannelMode == 5)
     
     if selectedChannelMode == 5 then customChannelBox:Show() else customChannelBox:Hide() customChannelBox:ClearFocus() end
@@ -166,8 +166,8 @@ end
 
 cbAuto:SetScript("OnClick", function() SyncChatRadioButtons(1) end)
 cbSay:SetScript("OnClick", function() SyncChatRadioButtons(2) end)
-cbYell:SetScript("OnClick", function() SyncChatRadioButtons(3) end)
-cbGuild:SetScript("OnClick", function() SyncChatRadioButtons(4) end)
+cbGuild:SetScript("OnClick", function() SyncChatRadioButtons(3) end)
+cbOfficer:SetScript("OnClick", function() SyncChatRadioButtons(4) end)
 cbCustom:SetScript("OnClick", function() SyncChatRadioButtons(5) end)
 
 customChannelBox:SetScript("OnTextChanged", function(self)
