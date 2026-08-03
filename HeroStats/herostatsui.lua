@@ -1037,30 +1037,12 @@ function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
                 local function ReportCallback()
                     local customChannelNum = HeroStatsSettings.reportCustomChannelNum
                     
+                    -- FIXED v0.10.2: UI layer simply routes to your dedicated herostatscomm.lua functions
                     if clickedViewType == "DAMAGE_DONE" then
                         HeroStats_Report_DamageDone(clickedData, channel, isCustomChannel, customChannelNum, fightSeconds)
+                    -- ... (dine andre elseif betingelser)
                     elseif clickedViewType == "DMG_CRIT" then
                         HeroStats_Report_DamageCrits(clickedData, channel, isCustomChannel, customChannelNum)
-                    elseif clickedViewType == "DAMAGE_TAKEN" then
-                        HeroStats_Report_DamageTaken(clickedData, channel, isCustomChannel, customChannelNum, fightSeconds)
-                    elseif clickedViewType == "HEALING" then
-                        HeroStats_Report_HealingDone(clickedData, channel, isCustomChannel, customChannelNum, fightSeconds)
-                    elseif clickedViewType == "HEAL_CRIT" then
-                        HeroStats_Report_HealingCrits(clickedData, channel, isCustomChannel, customChannelNum)
-                    elseif clickedViewType == "OVERHEALING" then
-                        HeroStats_Report_Efficiency(clickedData, channel, isCustomChannel, customChannelNum)
-                    elseif clickedViewType == "MANA_EFF" then
-                        HeroStats_Report_ManaEff(clickedData, channel, isCustomChannel, customChannelNum)
-                    elseif clickedViewType == "MANA_GAINED" then
-                        HeroStats_Report_ManaGained(clickedData, channel, isCustomChannel, customChannelNum)
-                    elseif clickedViewType == "DISPELS" then
-                        HeroStats_Report_Dispels(clickedData, channel, isCustomChannel, customChannelNum)
-                    elseif clickedViewType == "BUFFS" then
-                        HeroStats_Report_Buffs(clickedData, channel, isCustomChannel, customChannelNum)
-                    elseif clickedViewType == "DEATHS" then
-                        HeroStats_Report_Deaths(clickedData, channel, isCustomChannel, customChannelNum)
-                    elseif clickedViewType == "RESURRECTS" then
-                        HeroStats_Report_Resurrects(clickedData, channel, isCustomChannel, customChannelNum)
                     end
                 end
 

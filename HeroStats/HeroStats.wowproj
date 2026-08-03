@@ -17,6 +17,9 @@
     <Content Include="herostatscmd.lua">
       <SubType>Code</SubType>
     </Content>
+    <Content Include="herostatscomm.lua">
+      <SubType>Code</SubType>
+    </Content>
     <Content Include="herostatsconfig.lua">
       <SubType>Code</SubType>
     </Content>
