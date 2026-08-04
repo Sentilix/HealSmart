@@ -430,11 +430,14 @@ function coreFrame.RefreshStats()
     end
 
     -- Render blank state if no dataset rows found (v0.8.0 Data-Driven Secured)
+    -- FIXED v1.0.0: Master shield completely prevents combat ingress from flushing your records
     if #sortedHealers == 0 then
-        if HeroStats_RenderTextMessage then 
-            HeroStats_RenderTextMessage(viewTitle, "") 
+        if not (pageName == "PERSONAL_DMG_RECORDS" or pageName == "PERSONAL_HEAL_RECORDS") then
+            -- Original legacy fallback for your 12 traditional raid metrics pages
+            local pageTitle = baseTitle .. " (" .. sessionLabel .. ")"
+            if HeroStats_RenderTextMessage then HeroStats_RenderTextMessage(pageTitle, "") end
+            return
         end
-        return
     end
 
     -- FIXED v0.10.0: Symmetrical sorting logic for your two brand-new critical strike dashboards
@@ -492,15 +495,29 @@ function coreFrame.RefreshStats()
         local recordList = {}
         local maxRecordValue = 1
         
-        -- FIXED v1.0.0: Loops exclusively over your isolated damage record table
         if HeroStatsSettings and HeroStatsSettings.personalDamageRecords then
             for spellName, rec in pairs(HeroStatsSettings.personalDamageRecords) do
+                local totalCasts = rec.casts or 0
+                local critCasts = rec.critCasts or 0
+                local normalCasts = totalCasts - critCasts
+                if normalCasts < 0 then normalCasts = 0 end -- Secure mathematical safeguard
+                
                 if rec.crit and (rec.crit.amount or 0) > 0 then
-                    table.insert(recordList, { name = spellName, amount = rec.crit.amount, isCrit = true, target = rec.crit.target or "Unknown", date = rec.crit.date or "Unknown", casts = rec.casts or 0, class = playerClassFilename or "UNKNOWN" })
+                    table.insert(recordList, {
+                        name = spellName, amount = rec.crit.amount, isCrit = true,
+                        target = rec.crit.target or "Unknown", date = rec.crit.date or "Unknown",
+                        casts = critCasts, -- FIXED v1.0.0a3: Passes isolated critical strike count
+                        class = playerClassFilename or "UNKNOWN"
+                    })
                     if rec.crit.amount > maxRecordValue then maxRecordValue = rec.crit.amount end
                 end
                 if rec.normal and (rec.normal.amount or 0) > 0 then
-                    table.insert(recordList, { name = spellName, amount = rec.normal.amount, isCrit = false, target = rec.normal.target or "Unknown", date = rec.normal.date or "Unknown", casts = rec.casts or 0, class = playerClassFilename or "UNKNOWN" })
+                    table.insert(recordList, {
+                        name = spellName, amount = rec.normal.amount, isCrit = false,
+                        target = rec.normal.target or "Unknown", date = rec.normal.date or "Unknown",
+                        casts = normalCasts, -- FIXED v1.0.0a3: Passes isolated normal hits count via subtraction
+                        class = playerClassFilename or "UNKNOWN"
+                    })
                     if rec.normal.amount > maxRecordValue then maxRecordValue = rec.normal.amount end
                 end
             end
@@ -512,15 +529,29 @@ function coreFrame.RefreshStats()
         local recordList = {}
         local maxRecordValue = 1
         
-        -- FIXED v1.0.0: Loops exclusively over your isolated healing record table
         if HeroStatsSettings and HeroStatsSettings.personalHealingRecords then
             for spellName, rec in pairs(HeroStatsSettings.personalHealingRecords) do
+                local totalCasts = rec.casts or 0
+                local critCasts = rec.critCasts or 0
+                local normalCasts = totalCasts - critCasts
+                if normalCasts < 0 then normalCasts = 0 end
+                
                 if rec.crit and (rec.crit.amount or 0) > 0 then
-                    table.insert(recordList, { name = spellName, amount = rec.crit.amount, isCrit = true, target = rec.crit.target or "Unknown", date = rec.crit.date or "Unknown", casts = rec.casts or 0, class = playerClassFilename or "UNKNOWN" })
+                    table.insert(recordList, {
+                        name = spellName, amount = rec.crit.amount, isCrit = true,
+                        target = rec.crit.target or "Unknown", date = rec.crit.date or "Unknown",
+                        casts = critCasts, -- FIXED v1.0.0a3: Passes isolated critical strike count
+                        class = playerClassFilename or "UNKNOWN"
+                    })
                     if rec.crit.amount > maxRecordValue then maxRecordValue = rec.crit.amount end
                 end
                 if rec.normal and (rec.normal.amount or 0) > 0 then
-                    table.insert(recordList, { name = spellName, amount = rec.normal.amount, isCrit = false, target = rec.normal.target or "Unknown", date = rec.normal.date or "Unknown", casts = rec.casts or 0, class = playerClassFilename or "UNKNOWN" })
+                    table.insert(recordList, {
+                        name = spellName, amount = rec.normal.amount, isCrit = false,
+                        target = rec.normal.target or "Unknown", date = rec.normal.date or "Unknown",
+                        casts = normalCasts, -- FIXED v1.0.0a3: Passes isolated normal mends count via subtraction
+                        class = playerClassFilename or "UNKNOWN"
+                    })
                     if rec.normal.amount > maxRecordValue then maxRecordValue = rec.normal.amount end
                 end
             end
@@ -740,19 +771,22 @@ local function OnEvent_DAMAGE(eventType, sourceGUID, sourceName, sourceFlags, de
                 if not HeroStatsSettings.personalDamageRecords[cleanRecordSpellName] then
                     HeroStatsSettings.personalDamageRecords[cleanRecordSpellName] = {
                         casts = 0,
+                        critCasts = 0, -- FIXED v1.0.0a3: Single extra field tracks global critical strikes
                         normal = { amount = 0, target = "None", date = "None" },
                         crit = { amount = 0, target = "None", date = "None" }
                     }
                 end
 
                 local rec = HeroStatsSettings.personalDamageRecords[cleanRecordSpellName]
-                rec.casts = (rec.casts or 0) + 1
-
+                rec.casts = (rec.casts or 0) + 1 -- Total career casts incremented layout-wide securely
+            
                 local isNewRecord = false
                 local isCritRecord = false
                 local currentAmount = amount or 0
 
                 if isCrit then
+                    rec.critCasts = (rec.critCasts or 0) + 1 -- Increment your single extra crit field!
+                
                     if currentAmount > (rec.crit.amount or 0) then
                         rec.crit.amount = currentAmount
                         rec.crit.target = destName or "Unknown"
@@ -959,22 +993,22 @@ local function OnEvent_HEAL(eventType, sourceGUID, sourceName, sourceFlags, dest
                 if not HeroStatsSettings.personalHealingRecords[cleanRecordSpellName] then
                     HeroStatsSettings.personalHealingRecords[cleanRecordSpellName] = {
                         casts = 0,
+                        critCasts = 0, -- FIXED v1.0.0a3: Single extra field tracks global critical strikes
                         normal = { amount = 0, target = "None", date = "None" },
                         crit = { amount = 0, target = "None", date = "None" }
                     }
                 end
 
                 local rec = HeroStatsSettings.personalHealingRecords[cleanRecordSpellName]
-                rec.casts = (rec.casts or 0) + 1 -- Increment lifetime healing casts securely
-
-                -- Healing critical strike flags reside strictly on argument 18
-                local isHealCrit = select(18, CombatLogGetCurrentEventInfo())
-                
+                rec.casts = (rec.casts or 0) + 1
+            
                 local isNewRecord = false
                 local isCritRecord = false
-                local currentHeal = effective or 0 -- Uses your true active effective healing token
+                local currentHeal = effective or 0
 
                 if isHealCrit then
+                    rec.critCasts = (rec.critCasts or 0) + 1 -- Increment your single extra crit field!
+                
                     if currentHeal > (rec.crit.amount or 0) then
                         rec.crit.amount = currentHeal
                         rec.crit.target = destName or "Unknown"

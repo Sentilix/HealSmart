@@ -782,29 +782,30 @@ local function HeroStats_Report_Resurrects(playerData, channel, isCustom, custom
 end
 
 -- FIXED v1.0.0: Isolated tooltip generator module for Personal Damage Records
-function HeroStats_Report_PersonalDamage(tooltipFrame, playerData)
-    if not tooltipFrame or not playerData then return end
+function HeroStats_Report_PersonalDamage(tooltipFrame, spellData)
+    if not tooltipFrame or not spellData then return end
     
-    local recordTypeStr = playerData.isCrit and "Critical Strike Record" or "Normal Hit Record"
-    tooltipFrame:AddLine(playerData.name .. " (" .. recordTypeStr .. ")", 1, 1, 1)
-    tooltipFrame:AddLine(" ", 1, 1, 1)
+    local recordTypeStr = spellData.isCrit and "Critical Strike" or "Normal Hit"
+    tooltipFrame:AddLine(spellData.name .. " (" .. recordTypeStr .. ")", 1, 1, 1)
+    tooltipFrame:AddLine(" ", 1, 1, 1) -- Clean visual spacer layout
     
-    tooltipFrame:AddDoubleLine("Target vanquished:", playerData.target or "Unknown", 0.8, 0.8, 0.8, 1, 1, 1)
-    tooltipFrame:AddDoubleLine("Date established:", playerData.date or "Unknown", 0.8, 0.8, 0.8, 1, 1, 1)
-    tooltipFrame:AddDoubleLine("Total career casts:", FormatDotNumber and FormatDotNumber(playerData.casts) or playerData.casts, 0.8, 0.8, 0.8, 1, 0.82, 0)
+    -- Reads the parameters directly from the flat record list object
+    tooltipFrame:AddDoubleLine("Target:", spellData.target or "Unknown", 0.8, 0.8, 0.8, 1, 0.82, 0)
+    tooltipFrame:AddDoubleLine("Date:", spellData.date or "Unknown", 0.8, 0.8, 0.8, 1, 0.82, 0)
+    tooltipFrame:AddDoubleLine("Total casts:", FormatDotNumber and FormatDotNumber(spellData.casts) or spellData.casts, 0.8, 0.8, 0.8, 1, 0.82, 0)
 end
 
 -- FIXED v1.0.0: Isolated tooltip generator module for Personal Healing Records
-function HeroStats_Report_PersonalHealing(tooltipFrame, playerData)
-    if not tooltipFrame or not playerData then return end
+function HeroStats_Report_PersonalHealing(tooltipFrame, spellData)
+    if not tooltipFrame or not spellData then return end
     
-    local recordTypeStr = playerData.isCrit and "Critical Heal Record" or "Normal Heal Record"
-    tooltipFrame:AddLine(playerData.name .. " (" .. recordTypeStr .. ")", 1, 1, 1)
+    local recordTypeStr = spellData.isCrit and "Critical Heal" or "Normal Heal"
+    tooltipFrame:AddLine(spellData.name .. " (" .. recordTypeStr .. ")", 1, 1, 1)
     tooltipFrame:AddLine(" ", 1, 1, 1)
     
-    tooltipFrame:AddDoubleLine("Target mended:", playerData.target or "Unknown", 0.8, 0.8, 0.8, 1, 1, 1)
-    tooltipFrame:AddDoubleLine("Date established:", playerData.date or "Unknown", 0.8, 0.8, 0.8, 1, 1, 1)
-    tooltipFrame:AddDoubleLine("Total career casts:", FormatDotNumber and FormatDotNumber(data.casts) or playerData.casts, 0.8, 0.8, 0.8, 1, 0.82, 0)
+    tooltipFrame:AddDoubleLine("Target:", spellData.target or "Unknown", 0.8, 0.8, 0.8, 1, 0.82, 0)
+    tooltipFrame:AddDoubleLine("Date:", spellData.date or "Unknown", 0.8, 0.8, 0.8, 1, 0.82, 0)
+    tooltipFrame:AddDoubleLine("Total casts:", FormatDotNumber and FormatDotNumber(spellData.casts) or spellData.casts, 0.8, 0.8, 0.8, 1, 0.82, 0)
 end
 
 function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffective, viewTitle)
@@ -928,45 +929,6 @@ function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
             bar.leftText:SetText(i .. ". " .. (data.name or "Unknown"))
         end
 
-        -- OnEnter: Hover view routes instantly to dedicated tooltip modules for records
-        bar:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
-            GameTooltip:ClearLines()
-            
-            -- FIXED v1.0.0: Rute-pipeline based strictly on isolated modular functions
-            if viewType == "PERSONAL_DMG_RECORDS" then
-                HeroStats_Report_PersonalDamage(GameTooltip, data)
-                GameTooltip:Show()
-                return
-            elseif viewType == "PERSONAL_HEAL_RECORDS" then
-                HeroStats_Report_PersonalHealing(GameTooltip, data)
-                GameTooltip:Show()
-                return
-            end
-
-            -- Legacy fallback pipeline execution loop for standard metrics tabs
-            local titleText = (viewType == "DMG_CRIT") and "Top Critical Damage Abilities:" or "Top Critical Healing Abilities:"
-            GameTooltip:AddLine(titleText, 1, 1, 1)
-            
-            local textLines = HeroStats_GetTooltipLines and HeroStats_GetTooltipLines(data, viewType) or {}
-            if #textLines > 0 then
-                for _, line in ipairs(textLines) do
-                    local namePart, statPart = string.match(line, "(.-):%s*(.*)")
-                    if namePart and statPart then
-                        GameTooltip:AddDoubleLine(namePart, statPart, 0.8, 0.8, 0.8, 1, 0.82, 0)
-                    else
-                        GameTooltip:AddLine(line, 0.8, 0.8, 0.8)
-                    end
-                end
-            else
-                local fallbackText = (viewType == "DMG_CRIT") and "No critical damage records found." or "No critical healing records found."
-                GameTooltip:AddLine(fallbackText, 0.6, 0.6, 0.6, true)
-            end
-            GameTooltip:Show()
-        end)
-
-        bar:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
         bar:RegisterForClicks("RightButtonUp")
         -- FIXED v0.10.1: Localized text compiler generates strict data lines for chat output
         local function HeroStats_GetTooltipLines(targetData, currentView)
@@ -1013,35 +975,7 @@ function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
             return lines
         end
 
-        -- OnEnter: Standard hover action
-        bar:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
-            GameTooltip:ClearLines()
-            
-            local titleText = (viewType == "DMG_CRIT") and "Top Critical Damage Abilities:" or "Top Critical Healing Abilities:"
-            GameTooltip:AddLine(titleText, 1, 1, 1)
-            
-            local textLines = HeroStats_GetTooltipLines(data, viewType)
-            if #textLines > 0 then
-                for _, line in ipairs(textLines) do
-                    local namePart, statPart = string.match(line, "(.-):%s*(.*)")
-                    if namePart and statPart then
-                        GameTooltip:AddDoubleLine(namePart, statPart, 0.8, 0.8, 0.8, 1, 0.82, 0)
-                    else
-                        GameTooltip:AddLine(line, 0.8, 0.8, 0.8)
-                    end
-                end
-            else
-                local fallbackText = (viewType == "DMG_CRIT") and "No critical damage records found." or "No critical healing records found."
-                GameTooltip:AddLine(fallbackText, 0.6, 0.6, 0.6, true)
-            end
-            GameTooltip:Show()
-        end)
-
-        bar:SetScript("OnLeave", function() GameTooltip:Hide() end)
-
         -- OnClick Dropdown Engine
-        bar:RegisterForClicks("RightButtonUp")
         bar:SetScript("OnClick", function(self, button)
             if button == "RightButton" and data and HeroStatsSettings then
                 -- FREEZE SCOPE: Freeze player dataset and active page type immediately
@@ -1100,28 +1034,96 @@ function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
 
         -- NEW v0.9.0: Fully Data-Driven Text Routed Tooltip Engine (Server-Grafting Secured)
         bar:SetScript("OnEnter", function(self)
+            -- Fetch current page identity markers safely from the core engine instantly
             local pageRecord = HeroStats_GetPageRecord(HeroStats_CurrentActivePage)
             local pageName = pageRecord and pageRecord.name
 
-            -- Fetch the profile name and the current active server name safely
+            -- Initialize general game tooltip layout frames for standard metrics
+            GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
+            GameTooltip:ClearLines()
+
+            if pageName == "DMG_CRIT" or pageName == "HEAL_CRIT" then
+                local titleText = (pageName == "DMG_CRIT") and "Top Critical Damage Abilities:" or "Top Critical Healing Abilities:"
+                GameTooltip:AddLine(titleText, 1, 1, 1)
+                
+                if pageName == "DMG_CRIT" then
+                    if data.spellCrits and next(data.spellCrits) ~= nil then
+                        local sortedSpells = {}
+                        local totalSessionCritDmg = 0
+                        for spellName, cr in pairs(data.spellCrits) do
+                            local totalCritDmg = cr.dmg or 0
+                            if totalCritDmg > 0 then
+                                table.insert(sortedSpells, { name = spellName, crits = cr.crits or 0, dmg = totalCritDmg })
+                                totalSessionCritDmg = totalSessionCritDmg + totalCritDmg
+                            end
+                        end
+                        table.sort(sortedSpells, function(a, b) return a.dmg > b.dmg end)
+                        if totalSessionCritDmg == 0 then totalSessionCritDmg = 1 end
+                        for i = 1, math.min(10, #sortedSpells) do
+                            local s = sortedSpells[i]
+                            local spellCritSharePct = (s.dmg / totalSessionCritDmg) * 100
+                            local formattedDmg = FormatDotNumber and FormatDotNumber(s.dmg) or s.dmg
+                            GameTooltip:AddDoubleLine(i .. ". " .. s.name, string.format("%s (%d crits) (%.1f%%)", formattedDmg, s.crits, spellCritSharePct), 0.8, 0.8, 0.8, 1, 0.82, 0)
+                        end
+                    else
+                        GameTooltip:AddLine("No critical damage records found for this session.", 0.6, 0.6, 0.6, true)
+                    end
+                elseif pageName == "HEAL_CRIT" then
+                    if data.spellHealCrits and next(data.spellHealCrits) ~= nil then
+                        local sortedHeals = {}
+                        local totalSessionCritHeal = 0
+                        for spellName, cr in pairs(data.spellHealCrits) do
+                            local totalCritHeal = cr.amt or 0
+                            if totalCritHeal > 0 then
+                                table.insert(sortedHeals, { name = spellName, crits = cr.crits or 0, amt = totalCritHeal })
+                                totalSessionCritHeal = totalSessionCritHeal + totalCritHeal
+                            end
+                        end
+                        table.sort(sortedHeals, function(a, b) return a.amt > b.amt end)
+                        if totalSessionCritHeal == 0 then totalSessionCritHeal = 1 end
+                        for i = 1, math.min(10, #sortedHeals) do
+                            local h = sortedHeals[i]
+                            local spellCritSharePct = (h.amt / totalSessionCritHeal) * 100
+                            local formattedHeal = FormatDotNumber and FormatDotNumber(h.amt) or h.amt
+                            GameTooltip:AddDoubleLine(i .. ". " .. h.name, string.format("%s (%d crits) (%.1f%%)", formattedHeal, h.crits, spellCritSharePct), 0.8, 0.8, 0.8, 1, 0.82, 0)
+                        end
+                    else
+                        GameTooltip:AddLine("No critical healing records found for this session.", 0.6, 0.6, 0.6, true)
+                    end
+                end
+                
+                GameTooltip:Show()
+                return -- Ironclad exit pathway blocks the legacy session modules below completely!
+            end
+
+            -- 3. STANDARD SESSIONS PIPELINE (v0.9.0 Legacy Server-Grafting)
             local rawName = data.name or "Unknown"
             local currentRealm = GetRealmName() or ""
             local fullServerName = rawName
+            if pageName == "PERSONAL_DMG_RECORDS" or pageName == "PERSONAL_HEAL_RECORDS" then
+                rawName = UnitName("player")
+			end;
 
-            -- SERVER-GRAFTING: If Blizzard clipped the realm name off, we graft it on manually
             if not string.find(rawName, "-") and currentRealm ~= "" then
                 fullServerName = rawName .. "-" .. currentRealm
             end
-
-            GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
-            GameTooltip:ClearLines()           
-            
-            -- Fetch the class colors from the game engine safely
+			
             local classColor = RAID_CLASS_COLORS[data.class] or { r = 0.5, g = 0.5, b = 0.5 }
-            
-            -- FIXED v0.9.0: Beautiful class-colored header with your guaranteed server name!
             GameTooltip:AddLine(fullServerName, classColor.r, classColor.g, classColor.b)
             GameTooltip:AddLine(" ")
+
+            -- FIXED v1.0.0: CONSOLIDATED CRITICAL & PERSONAL DASHBOARDS PIPELINE
+            if pageName == "PERSONAL_DMG_RECORDS" or pageName == "PERSONAL_HEAL_RECORDS" then                
+                if pageName == "PERSONAL_DMG_RECORDS" then
+                    HeroStats_Report_PersonalDamage(GameTooltip, data)
+                elseif pageName == "PERSONAL_HEAL_RECORDS" then
+                    HeroStats_Report_PersonalHealing(GameTooltip, data)
+				end
+
+                GameTooltip:Show()
+                return -- Ironclad exit pathway blocks the legacy session modules below completely!
+			end;
+            
                         
             local fightSeconds = HeroStats_CurrentFightDuration_RenderOverride or HeroStats_CurrentFightDuration or 1
             if fightSeconds < 1 then fightSeconds = 1 end
@@ -1134,18 +1136,15 @@ function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
                         table.insert(sortedSpells, { name = spellName, eff = spellData.effective or 0, oh = spellData.overheal or 0 })
                     end
                     table.sort(sortedSpells, function(a, b) return a.eff > b.eff end)
-                    
                     local lineCount = 1
                     for i = 1, #sortedSpells do
                         if lineCount > 10 then break end
                         local s = sortedSpells[i]
-                        
                         if pageName == "HEALING" then
                             if s.eff > 0 then
                                 local personalSharePct = (data.effective > 0) and ((s.eff / data.effective) * 100) or 0
                                 local formattedAmt = FormatDotNumber and FormatDotNumber(s.eff) or s.eff
                                 local spellHps = s.eff / fightSeconds
-                                
                                 GameTooltip:AddDoubleLine(lineCount .. ". " .. s.name, string.format("%s (%.0f HPS) (%.1f%%)", formattedAmt, spellHps, personalSharePct), 0.8, 0.8, 0.8, 1, 0.82, 0)
                                 lineCount = lineCount + 1
                             end
@@ -1154,43 +1153,32 @@ function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
                             local spellEfficiencyPct = (spellGross > 0) and ((s.eff / spellGross) * 100) or 0
                             local formattedNet = FormatDotNumber and FormatDotNumber(s.eff) or s.eff
                             local formattedGross = FormatDotNumber and FormatDotNumber(spellGross) or spellGross
-                            
                             GameTooltip:AddDoubleLine(lineCount .. ". " .. s.name, string.format("%s / %s (%.0f%%)", formattedNet, formattedGross, spellEfficiencyPct), 0.8, 0.8, 0.8, 1, 0.82, 0)
                             lineCount = lineCount + 1
                         end
                     end
                 end
                 
-            elseif viewType == "MANA_EFF" then
+            elseif pageName == "MANA_EFF" then
                 GameTooltip:AddLine("Top Mana Efficiency Abilities:", 1, 1, 1)
                 if data.spellMana and next(data.spellMana) ~= nil then
                     local sortedSpells = {}
                     for spellName, mData in pairs(data.spellMana) do
                         local mUsed = mData.manaUsed or 0
                         if mUsed > 0 then
-                            -- Cross-reference with your primary spellHeals table to fetch the true effective healing value
                             local trueEffective = mData.effective or 0
                             if trueEffective == 0 and data.spellHealCrits and data.spellHeals and data.spellHeals[spellName] then
                                 trueEffective = data.spellHeals[spellName].effective or 0
                             end
-                            
                             local spellHPM = trueEffective / mUsed
                             table.insert(sortedSpells, { name = spellName, hpm = spellHPM, used = mUsed })
                         end
                     end
-                    -- FIXED v0.10.1: Sort descending based on factual HPM efficiency metrics to match chat output
                     table.sort(sortedSpells, function(a, b) return a.hpm > b.hpm end)
-
                     for i = 1, math.min(10, #sortedSpells) do
                         local s = sortedSpells[i]
                         local formattedMana = FormatDotNumber and FormatDotNumber(s.used) or s.used
-                        
-                        -- Outputs identical layout symmetry: "1. Flash Heal (Rank 1) | 1,875 mana (3.0 HPM)" using golden design guidelines
-                        GameTooltip:AddDoubleLine(
-                            i .. ". " .. s.name,
-                            string.format("%s mana (%.1f HPM)", formattedMana, s.hpm),
-                            0.8, 0.8, 0.8, 1, 0.82, 0
-                        )
+                        GameTooltip:AddDoubleLine(i .. ". " .. s.name, string.format("%s mana (%.1f HPM)", formattedMana, s.hpm), 0.8, 0.8, 0.8, 1, 0.82, 0)
                     end
                 else
                     GameTooltip:AddLine("No mana efficiency records found for this session.", 0.6, 0.6, 0.6, true)
@@ -1202,12 +1190,10 @@ function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
                     local sortedGainedSpells = {}
                     for spellName, gainedAmt in pairs(data.spellManaGained) do table.insert(sortedGainedSpells, { name = spellName, amt = gainedAmt }) end
                     table.sort(sortedGainedSpells, function(a, b) return a.amt > b.amt end)
-                    
                     for i = 1, math.min(8, #sortedGainedSpells) do
                         local g = sortedGainedSpells[i]
                         local personalSharePct = (data.manaGained > 0) and ((g.amt / data.manaGained) * 100) or 0
                         local formattedAmt = FormatDotNumber and FormatDotNumber(g.amt) or g.amt
-                        
                         GameTooltip:AddDoubleLine(i .. ". " .. g.name, string.format("%s (%.0f%%)", formattedAmt, personalSharePct), 0.8, 0.8, 0.8, 1, 0.82, 0)
                     end
                 end
@@ -1218,13 +1204,11 @@ function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
                     local sortedSpells = {}
                     for spellName, dmgAmt in pairs(data.spellDamage) do table.insert(sortedSpells, { name = spellName, amt = dmgAmt }) end
                     table.sort(sortedSpells, function(a, b) return a.amt > b.amt end)
-                    
                     for i = 1, math.min(8, #sortedSpells) do
                         local s = sortedSpells[i]
                         local personalSharePct = (data.damageDone > 0) and ((s.amt / data.damageDone) * 100) or 0
                         local formattedAmt = FormatDotNumber and FormatDotNumber(s.amt) or s.amt
                         local spellDps = s.amt / fightSeconds
-                        
                         GameTooltip:AddDoubleLine(i .. ". " .. s.name, string.format("%s (%.0f DPS) (%.1f%%)", formattedAmt, spellDps, personalSharePct), 0.8, 0.8, 0.8, 1, 0.82, 0)
                     end
                 end
@@ -1238,102 +1222,24 @@ function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
                         table.insert(sortedSources, { key = sourceKey, amt = finalAmt })
                     end
                     table.sort(sortedSources, function(a, b) return a.amt > b.amt end)
-                    
                     for i = 1, math.min(8, #sortedSources) do
                         local s = sortedSources[i]
                         local personalSharePct = (data.damageTaken > 0) and ((s.amt / data.damageTaken) * 100) or 0
                         local formattedAmt = FormatDotNumber and FormatDotNumber(s.amt) or s.amt
                         local sourceDtps = s.amt / fightSeconds
-                        
                         GameTooltip:AddDoubleLine(i .. ". " .. s.key, string.format("%s (%.0f DTPS) (%.1f%%)", formattedAmt, sourceDtps, personalSharePct), 0.8, 0.8, 0.8, 1, 0.82, 0)
                     end
                 end
 				
-            elseif viewType == "DMG_CRIT" then
-                GameTooltip:AddLine("Top Critical Damage Abilities:", 1, 1, 1)
-            
-                if data.spellCrits and next(data.spellCrits) ~= nil then
-                    local sortedSpells = {}
-                    local totalSessionCritDmg = 0
-                
-                    for spellName, cr in pairs(data.spellCrits) do
-                        local totalCritDmg = cr.dmg or 0
-                        if totalCritDmg > 0 then
-                            table.insert(sortedSpells, { name = spellName, crits = cr.crits or 0, dmg = totalCritDmg })
-                            -- Calculate the global session master sum for damage crits
-                            totalSessionCritDmg = totalSessionCritDmg + totalCritDmg
-                        end
-                    end
-                    table.sort(sortedSpells, function(a, b) return a.dmg > b.dmg end)
-                
-                    -- Guard against division by zero
-                    if totalSessionCritDmg == 0 then totalSessionCritDmg = 1 end
-                
-                    for i = 1, math.min(10, #sortedSpells) do
-                        local s = sortedSpells[i]
-                        -- Calculate this specific ability's share of your total critical damage
-                        local spellCritSharePct = (s.dmg / totalSessionCritDmg) * 100
-                        local formattedDmg = FormatDotNumber and FormatDotNumber(s.dmg) or s.dmg
-                    
-                        -- Formatted output layout: "1. Heroic Strike (Rank 9) | 674 (1 crits) (55.5%)"
-                        GameTooltip:AddDoubleLine(
-                            i .. ". " .. s.name,
-                            string.format("%s (%d crits) (%.1f%%)", formattedDmg, s.crits, spellCritSharePct),
-                            0.8, 0.8, 0.8, 1, 0.82, 0
-                        )
-                    end
-                else
-                    GameTooltip:AddLine("No critical damage records found for this session.", 0.6, 0.6, 0.6, true)
-                end
-
-            elseif viewType == "HEAL_CRIT" then
-                GameTooltip:AddLine("Top Critical Healing Abilities:", 1, 1, 1)
-            
-                if data.spellHealCrits and next(data.spellHealCrits) ~= nil then
-                    local sortedHeals = {}
-                    local totalSessionCritHeal = 0
-                
-                    for spellName, cr in pairs(data.spellHealCrits) do
-                        local totalCritHeal = cr.amt or 0
-                        if totalCritHeal > 0 then
-                            table.insert(sortedHeals, { name = spellName, crits = cr.crits or 0, amt = totalCritHeal })
-                            -- Calculate the global session master sum for healing crits
-                            totalSessionCritHeal = totalSessionCritHeal + totalCritHeal
-                        end
-                    end
-                    table.sort(sortedHeals, function(a, b) return a.amt > b.amt end)
-                
-                    -- Guard against division by zero
-                    if totalSessionCritHeal == 0 then totalSessionCritHeal = 1 end
-                
-                    for i = 1, math.min(10, #sortedHeals) do
-                        local h = sortedHeals[i]
-                        -- Calculate this specific ability's share of your total critical healing
-                        local spellCritSharePct = (h.amt / totalSessionCritHeal) * 100
-                        local formattedHeal = FormatDotNumber and FormatDotNumber(h.amt) or h.amt
-                    
-                        -- Formatted output layout: "1. Flash Heal | 4,512 (8 crits) (100.0%)"
-                        GameTooltip:AddDoubleLine(
-                            i .. ". " .. h.name,
-                            string.format("%s (%d crits) (%.1f%%)", formattedHeal, h.crits, spellCritSharePct),
-                            0.8, 0.8, 0.8, 1, 0.82, 0
-                        )
-                    end
-                else
-                    GameTooltip:AddLine("No critical healing records found for this session.", 0.6, 0.6, 0.6, true)
-                end
-
             elseif pageName == "DISPELS" then
                 GameTooltip:AddLine("Top Dispel Abilities:", 1, 1, 1)
                 if data.spellDispels and next(data.spellDispels) ~= nil then
                     local sortedDispels = {}
                     for spellName, count in pairs(data.spellDispels) do table.insert(sortedDispels, { name = spellName, amt = count }) end
                     table.sort(sortedDispels, function(a, b) return a.amt > b.amt end)
-                    
                     for i = 1, math.min(8, #sortedDispels) do
                         local d = sortedDispels[i]
                         local personalSharePct = (data.dispels > 0) and ((d.amt / data.dispels) * 100) or 0
-                        
                         GameTooltip:AddDoubleLine(i .. ". " .. d.name, string.format("%d (%.0f%%)", d.amt, personalSharePct), 0.8, 0.8, 0.8, 1, 0.82, 0)
                     end
                 end
@@ -1344,11 +1250,9 @@ function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
                     local sortedBuffs = {}
                     for buffName, count in pairs(data.spellBuffs) do table.insert(sortedBuffs, { name = buffName, amt = count }) end
                     table.sort(sortedBuffs, function(a, b) return a.amt > b.amt end)
-                    
                     for i = 1, math.min(8, #sortedBuffs) do
                         local b = sortedBuffs[i]
                         local personalSharePct = (data.buffs > 0) and ((b.amt / data.buffs) * 100) or 0
-                        
                         GameTooltip:AddDoubleLine(i .. ". " .. b.name, string.format("%d (%.0f%%)", b.amt, personalSharePct), 0.8, 0.8, 0.8, 1, 0.82, 0)
                     end
                 end
@@ -1358,36 +1262,24 @@ function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
                 local personalSharePct = (data.deaths > 0) and 100 or 0
                 GameTooltip:AddDoubleLine("1. Deaths", string.format("%d (%.0f%%)", data.deaths or 0, personalSharePct), 0.8, 0.8, 0.8, 1, 0.82, 0)
  
-            elseif viewType == "RESURRECTS" then
+            elseif pageName == "RESURRECTS" then
                 GameTooltip:AddLine("Top Resurrect Recipients:", 1, 1, 1)
                 if data.resRecipients and next(data.resRecipients) ~= nil then
                     local sortedSpells = {}
                     for targetName, rData in pairs(data.resRecipients) do
-                        -- Handle both old legacy single integers and your new sub-tables safely
                         local tAmt = type(rData) == "table" and rData.amount or rData
                         local tClass = type(rData) == "table" and rData.class or "UNKNOWN"
-                        
-                        if tAmt > 0 then 
-                            table.insert(sortedSpells, { name = targetName, amount = tAmt, class = tClass }) 
-                        end
+                        if tAmt > 0 then table.insert(sortedSpells, { name = targetName, amount = tAmt, class = tClass }) end
                     end
                     table.sort(sortedSpells, function(a, b) return a.amount > b.amount end)
-
                     for i = 1, math.min(10, #sortedSpells) do
                         local s = sortedSpells[i]
-                        local r, g, b = 0.8, 0.8, 0.8 -- Default silver fallback color
-                        
-                        -- Read the class color directly from your stored dataset without hitting Blizzard API
+                        local r, g, b = 0.8, 0.8, 0.8
                         if s.class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[s.class] then
                             local c = RAID_CLASS_COLORS[s.class]
                             r, g, b = c.r, c.g, c.b
                         end
-                        
-                        GameTooltip:AddDoubleLine(
-                            i .. ". " .. s.name,
-                            string.format("Brought back %d times", s.amount),
-                            r, g, b, 1, 0.82, 0
-                        )
+                        GameTooltip:AddDoubleLine(i .. ". " .. s.name, string.format("Brought back %d times", s.amount), r, g, b, 1, 0.82, 0)
                     end
                 else
                     GameTooltip:AddLine("No resurrect records found for this session.", 0.6, 0.6, 0.6, true)
@@ -1396,7 +1288,7 @@ function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
                         
             GameTooltip:Show()
         end)
-
+						
         bar:SetScript("OnLeave", function(self)
             if GameTooltip then GameTooltip:Hide() end
         end)
@@ -1413,7 +1305,10 @@ function HeroStats_RenderTextMessage(titleString, bodyString)
 end
 
 function HeroStats_ClearDisplay()
-    for _, bar in ipairs(uiBars) do bar:Hide() end
+    for _, bar in ipairs(uiBars) do 
+        bar:Hide() 
+    end
+
     scrollChild:SetHeight(1)
 end
 
