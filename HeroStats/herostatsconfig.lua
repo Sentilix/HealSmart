@@ -190,6 +190,40 @@ else
     InterfaceOptions_AddCategory(configPanel)
 end
 
+-- FIXED v1.0.0: Protected Personal Records Reset Button Layout
+local btnResetRecords = CreateFrame("Button", "HeroStatsResetRecordsButton", configPanel, "UIPanelButtonTemplate")
+btnResetRecords:SetSize(160, 24)
+-- Positioned safely down in the bottom-left quadrant to prevent accidental clicks
+btnResetRecords:SetPoint("TOPLEFT", cbCustom, "BOTTOMLEFT", 0, -40)
+btnResetRecords:SetText("Reset Personal Records")
+
+-- Define a dedicated Blizzard Static Popup configuration specifically for your museum purge
+StaticPopupDialogs["HEROSTATS_PURGE_RECORDS_CONFIRM"] = {
+    text = "WARNING: Are you sure you want to permanently delete ALL your historical personal records and Critline milestones?",
+    button1 = "Yes, Purge My Records",
+    button2 = "No, Cancel",
+    OnAccept = function()
+        if HeroStatsSettings then
+            HeroStatsSettings.personalDamageRecords = {}
+            HeroStatsSettings.personalHealingRecords = {}
+            if HeroStats_Print then
+                HeroStats_Print("Your historical Personal Damage and Healing Records have been completely purged.")
+            end
+            if coreFrame and coreFrame.RefreshStats then 
+                coreFrame.RefreshStats() 
+            end
+        end
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    preferredIndex = 3,
+}
+
+btnResetRecords:SetScript("OnClick", function()
+    StaticPopup_Show("HEROSTATS_PURGE_RECORDS_CONFIRM")
+end)
+
 -- Hook an onboarding loader listener to populate saved variables securely upon login
 local configLoader = CreateFrame("Frame")
 configLoader:RegisterEvent("ADDON_LOADED")
@@ -202,6 +236,9 @@ configLoader:SetScript("OnEvent", function(self, event, addonName)
             if not HeroStatsSettings.reportChannelMode then HeroStatsSettings.reportChannelMode = 1 end
             if not HeroStatsSettings.reportCustomChannelNum then HeroStatsSettings.reportCustomChannelNum = 1 end
             if not HeroStatsSettings.reportLinesLimit then HeroStatsSettings.reportLinesLimit = 5 end
+            if not HeroStatsSettings.personalDamageRecords then HeroStatsSettings.personalDamageRecords = {} end
+            if not HeroStatsSettings.personalHealingRecords then HeroStatsSettings.personalHealingRecords = {} end
+            if not HeroStatsSettings.recordNotifyMode then HeroStatsSettings.recordNotifyMode = 2 end
 
             slider:SetValue(HeroStatsSettings.maxSessionsLimit)
             linesSlider:SetValue(HeroStatsSettings.reportLinesLimit)

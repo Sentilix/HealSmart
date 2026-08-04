@@ -781,6 +781,32 @@ local function HeroStats_Report_Resurrects(playerData, channel, isCustom, custom
     end
 end
 
+-- FIXED v1.0.0: Isolated tooltip generator module for Personal Damage Records
+function HeroStats_Report_PersonalDamage(tooltipFrame, playerData)
+    if not tooltipFrame or not playerData then return end
+    
+    local recordTypeStr = playerData.isCrit and "Critical Strike Record" or "Normal Hit Record"
+    tooltipFrame:AddLine(playerData.name .. " (" .. recordTypeStr .. ")", 1, 1, 1)
+    tooltipFrame:AddLine(" ", 1, 1, 1)
+    
+    tooltipFrame:AddDoubleLine("Target vanquished:", playerData.target or "Unknown", 0.8, 0.8, 0.8, 1, 1, 1)
+    tooltipFrame:AddDoubleLine("Date established:", playerData.date or "Unknown", 0.8, 0.8, 0.8, 1, 1, 1)
+    tooltipFrame:AddDoubleLine("Total career casts:", FormatDotNumber and FormatDotNumber(playerData.casts) or playerData.casts, 0.8, 0.8, 0.8, 1, 0.82, 0)
+end
+
+-- FIXED v1.0.0: Isolated tooltip generator module for Personal Healing Records
+function HeroStats_Report_PersonalHealing(tooltipFrame, playerData)
+    if not tooltipFrame or not playerData then return end
+    
+    local recordTypeStr = playerData.isCrit and "Critical Heal Record" or "Normal Heal Record"
+    tooltipFrame:AddLine(playerData.name .. " (" .. recordTypeStr .. ")", 1, 1, 1)
+    tooltipFrame:AddLine(" ", 1, 1, 1)
+    
+    tooltipFrame:AddDoubleLine("Target mended:", playerData.target or "Unknown", 0.8, 0.8, 0.8, 1, 1, 1)
+    tooltipFrame:AddDoubleLine("Date established:", playerData.date or "Unknown", 0.8, 0.8, 0.8, 1, 1, 1)
+    tooltipFrame:AddDoubleLine("Total career casts:", FormatDotNumber and FormatDotNumber(data.casts) or playerData.casts, 0.8, 0.8, 0.8, 1, 0.82, 0)
+end
+
 function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffective, viewTitle)
     maxVal = tonumber(maxVal) or 0
     infoText:SetText("")
@@ -809,7 +835,14 @@ function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
         if bar.UpdateBorders then bar:UpdateBorders(targetWidth) end
 
         local color = RAID_CLASS_COLORS[data.class] or {r = 0.5, g = 0.5, b = 0.5}
-        bar.statusBar:SetStatusBarColor(color.r, color.g, color.b, 1.0)
+        local r, g, b = color.r, color.g, color.b
+
+        -- FIXED v1.0.0: Golden visual override triggers exclusively for active personal crit records
+        if (viewType == "PERSONAL_DMG_RECORDS" or viewType == "PERSONAL_HEAL_RECORDS") and data.isCrit then
+            r, g, b = 1.0, 0.82, 0.0
+        end
+
+        bar.statusBar:SetStatusBarColor(r, g, b, 1.0)
         
         -- FIXED v0.8.0: Token names changed from old short versions to your new full matrix tokens
         local fillValue = 0
@@ -817,7 +850,6 @@ function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
         if viewType == "HEALING" then
             fillValue = (maxVal > 0) and ((data.effective / maxVal) * 100) or 0
         elseif viewType == "HEAL_CRIT" then
-            -- FIXED v0.10.0: Symmetrical percentage calculation for healing crits
             fillValue = (maxVal > 0) and ((data.healCritPct / maxVal) * 100) or 0
         elseif viewType == "OVERHEALING" then
             fillValue = data.percent or 0
@@ -828,7 +860,6 @@ function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
         elseif viewType == "DAMAGE_DONE" then
             fillValue = (maxVal > 0) and ((data.damageDone / maxVal) * 100) or 0
         elseif viewType == "DMG_CRIT" then
-            -- FIXED v0.10.0: Symmetrical percentage calculation for damage crits
             fillValue = (maxVal > 0) and ((data.dmgCritPct / maxVal) * 100) or 0
         elseif viewType == "DAMAGE_TAKEN" then
             fillValue = (maxVal > 0) and ((data.damageTaken / maxVal) * 100) or 0
@@ -840,6 +871,8 @@ function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
             fillValue = (maxVal > 0) and ((data.deaths / maxVal) * 100) or 0
         elseif viewType == "RESURRECTS" then
             fillValue = (maxVal > 0) and ((data.resurrects / maxVal) * 100) or 0
+        elseif viewType == "PERSONAL_DMG_RECORDS" or viewType == "PERSONAL_HEAL_RECORDS" then
+            fillValue = (maxVal > 0) and ((data.amount / maxVal) * 100) or 0
         end
         
         bar.statusBar:SetValue(fillValue)
@@ -859,61 +892,65 @@ function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
             local raidSharePercent = (data.effective / currentTotalRaid) * 100
             local formattedAmt = FormatDotNumber and FormatDotNumber(data.effective) or data.effective
             local hps = data.effective / fightSeconds
-            bar.rightText:SetText(string.format("%s (%.0f HPS) - %.1f%%", formattedAmt, hps, raidSharePercent))
-            
+            bar.rightText:SetText(string.format("%s (%.0f HPS) - %.1f%%", formattedAmt, hps, raidSharePercent))            
         elseif viewType == "HEAL_CRIT" then
-            -- FIXED v0.10.0: Render healing crit percentages cleanly on the primary layout bars
             bar.rightText:SetText(string.format("%.1f%% Crit", data.healCritPct or 0))
-
         elseif viewType == "OVERHEALING" then
             bar.rightText:SetText(string.format("%.1f%% Efficiency", data.percent or 0))
-            
         elseif viewType == "MANA_EFF" then
             bar.rightText:SetText(string.format("%.1f HPM", data.hpm or 0))
-            
         elseif viewType == "MANA_GAINED" then
             local formattedAmt = FormatDotNumber and FormatDotNumber(data.manaGained) or data.manaGained
             bar.rightText:SetText(string.format("%s mana", formattedAmt))
-            
         elseif viewType == "DAMAGE_DONE" then
             local formattedAmt = FormatDotNumber and FormatDotNumber(data.damageDone) or data.damageDone
             local dps = data.damageDone / fightSeconds
             bar.rightText:SetText(string.format("%s (%.0f DPS)", formattedAmt, dps))
-            
         elseif viewType == "DMG_CRIT" then
-            -- FIXED v0.10.0: Render damage crit percentages cleanly on the primary layout bars
             bar.rightText:SetText(string.format("%.1f%% Crit", data.dmgCritPct or 0))
-
         elseif viewType == "DAMAGE_TAKEN" then
             local formattedAmt = FormatDotNumber and FormatDotNumber(data.damageTaken) or data.damageTaken
             local dtps = data.damageTaken / fightSeconds
             bar.rightText:SetText(string.format("%s (%.0f DTPS)", formattedAmt, dtps))
-            
         elseif viewType == "DISPELS" then
             bar.rightText:SetText(string.format("%d Dispels", data.dispels or 0))
-            
         elseif viewType == "BUFFS" then
             bar.rightText:SetText(string.format("%d Buffs", data.buffs or 0))
-            
         elseif viewType == "DEATHS" then
             bar.rightText:SetText(string.format("%d Deaths", data.deaths or 0))
-            
         elseif viewType == "RESURRECTS" then
             bar.rightText:SetText(string.format("%d Resses", data.resurrects or 0))
+        elseif viewType == "RESURRECTS" then
+            bar.rightText:SetText(string.format("%d Resses", data.resurrects or 0))
+        elseif viewType == "PERSONAL_DMG_RECORDS" or viewType == "PERSONAL_HEAL_RECORDS" then
+            local formattedVal = FormatDotNumber and FormatDotNumber(data.amount) or data.amount
+            bar.rightText:SetText(formattedVal)
+            bar.leftText:SetText(i .. ". " .. (data.name or "Unknown"))
         end
 
-        -- OnEnter: Hover view pulls from the shared data matrix
+        -- OnEnter: Hover view routes instantly to dedicated tooltip modules for records
         bar:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
             GameTooltip:ClearLines()
             
+            -- FIXED v1.0.0: Rute-pipeline based strictly on isolated modular functions
+            if viewType == "PERSONAL_DMG_RECORDS" then
+                HeroStats_Report_PersonalDamage(GameTooltip, data)
+                GameTooltip:Show()
+                return
+            elseif viewType == "PERSONAL_HEAL_RECORDS" then
+                HeroStats_Report_PersonalHealing(GameTooltip, data)
+                GameTooltip:Show()
+                return
+            end
+
+            -- Legacy fallback pipeline execution loop for standard metrics tabs
             local titleText = (viewType == "DMG_CRIT") and "Top Critical Damage Abilities:" or "Top Critical Healing Abilities:"
             GameTooltip:AddLine(titleText, 1, 1, 1)
             
-            local textLines = HeroStats_GetTooltipLines(data, viewType)
+            local textLines = HeroStats_GetTooltipLines and HeroStats_GetTooltipLines(data, viewType) or {}
             if #textLines > 0 then
                 for _, line in ipairs(textLines) do
-                    -- Splits the compiled text cleanly into a standard golden layout tooltip line
                     local namePart, statPart = string.match(line, "(.-):%s*(.*)")
                     if namePart and statPart then
                         GameTooltip:AddDoubleLine(namePart, statPart, 0.8, 0.8, 0.8, 1, 0.82, 0)
@@ -1040,7 +1077,6 @@ function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
                     -- FIXED v0.10.2: UI layer simply routes to your dedicated herostatscomm.lua functions
                     if clickedViewType == "DAMAGE_DONE" then
                         HeroStats_Report_DamageDone(clickedData, channel, isCustomChannel, customChannelNum, fightSeconds)
-                    -- ... (dine andre elseif betingelser)
                     elseif clickedViewType == "DMG_CRIT" then
                         HeroStats_Report_DamageCrits(clickedData, channel, isCustomChannel, customChannelNum)
                     end
@@ -1066,7 +1102,6 @@ function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
         bar:SetScript("OnEnter", function(self)
             local pageRecord = HeroStats_GetPageRecord(HeroStats_CurrentActivePage)
             local pageName = pageRecord and pageRecord.name
-            if pageName == "FRONTPAGE" then return end
 
             -- Fetch the profile name and the current active server name safely
             local rawName = data.name or "Unknown"
