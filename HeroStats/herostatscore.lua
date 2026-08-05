@@ -430,14 +430,13 @@ function coreFrame.RefreshStats()
     end
 
     -- Render blank state if no dataset rows found (v0.8.0 Data-Driven Secured)
-    -- FIXED v1.0.0: Master shield completely prevents combat ingress from flushing your records
     if #sortedHealers == 0 then
+        local pageTitle = baseTitle;
         if not (pageName == "PERSONAL_DMG_RECORDS" or pageName == "PERSONAL_HEAL_RECORDS") then
-            -- Original legacy fallback for your 12 traditional raid metrics pages
-            local pageTitle = baseTitle .. " (" .. sessionLabel .. ")"
-            if HeroStats_RenderTextMessage then HeroStats_RenderTextMessage(pageTitle, "") end
-            return
+            pageTitle = pageTitle .. " (" .. sessionLabel .. ")"
         end
+        if HeroStats_RenderTextMessage then HeroStats_RenderTextMessage(pageTitle, "") end
+        return
     end
 
     -- FIXED v0.10.0: Symmetrical sorting logic for your two brand-new critical strike dashboards

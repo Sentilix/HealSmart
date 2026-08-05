@@ -384,8 +384,30 @@ if HeroStatsScrollFrameScrollBar then
     -- FIXED ANCHOR: Stays on the absolute window edge, but drops 22 pixels down to clear the icons
     sb:SetPoint("TOPRIGHT", container, "TOPRIGHT", 0, -37)
     sb:SetPoint("BOTTOMRIGHT", container, "BOTTOMRIGHT", -2, 20)
+    
     if HeroStatsScrollFrameScrollBarScrollUpButton then HeroStatsScrollFrameScrollBarScrollUpButton:Hide() end
     if HeroStatsScrollFrameScrollBarScrollDownButton then HeroStatsScrollFrameScrollBarScrollDownButton:Hide() end
+   
+    -- A: Color the main drag thumb button royal blue (0.0, 0.44, 0.87) to match your header
+    local thumb = HeroStatsScrollFrameScrollBarThumbTexture or (sb.GetThumbTexture and sb:GetThumbTexture())
+    if thumb then
+        thumb:SetVertexColor(0.0, 0.44, 0.87, 1.0)
+    end
+
+    -- B: Color the vertical border textures royal blue to match frame lines
+    local borderTextures = {
+        "HeroStatsScrollFrameScrollBarBG",
+        "HeroStatsScrollFrameScrollBarTop",
+        "HeroStatsScrollFrameScrollBarMiddle",
+        "HeroStatsScrollFrameScrollBarBottom"
+    }
+    
+    for _, texName in ipairs(borderTextures) do
+        local tex = _G[texName] or sb[texName]
+        if tex and tex.SetVertexColor then
+            tex:SetVertexColor(0.0, 0.44, 0.87, 1.0)
+        end
+    end
 end
 
 local scrollChild = CreateFrame("Frame", nil, scrollFrame)
@@ -835,12 +857,20 @@ function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
         bar:SetWidth(targetWidth)
         if bar.UpdateBorders then bar:UpdateBorders(targetWidth) end
 
-        local color = RAID_CLASS_COLORS[data.class] or {r = 0.5, g = 0.5, b = 0.5}
-        local r, g, b = color.r, color.g, color.b
+        -- Inside your HeroStats_RenderRaidBars loop in herostatsui.lua:
+        local r, g, b = 0.5, 0.5, 0.5 -- Default fallback grey
 
-        -- FIXED v1.0.0: Golden visual override triggers exclusively for active personal crit records
-        if (viewType == "PERSONAL_DMG_RECORDS" or viewType == "PERSONAL_HEAL_RECORDS") and data.isCrit then
-            r, g, b = 1.0, 0.82, 0.0
+        if viewType == "PERSONAL_DMG_RECORDS" or viewType == "PERSONAL_HEAL_RECORDS" then
+            if data.isCrit then
+                -- Master Gold Asset: High-value critical strikes glimmers in pure gold (1.0, 0.82, 0.0)
+                r, g, b = 1.0, 0.82, 0.0
+            else
+                -- Master Silver Asset: Standard hits elegant layouted in clean silver-grey (0.75, 0.75, 0.75)
+                r, g, b = 0.75, 0.75, 0.75
+            end
+        else
+            local color = RAID_CLASS_COLORS[data.class] or { r = 0.5, g = 0.5, b = 0.5 }
+            r, g, b = color.r, color.g, color.b
         end
 
         bar.statusBar:SetStatusBarColor(r, g, b, 1.0)
