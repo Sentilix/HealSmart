@@ -612,6 +612,56 @@ local function GetLiveSpellManaCost(spellID)
     return 0
 end
 
+-- FIXED v1.0.0a3: Symmetrical Notification Engine with Solo-Group Fallback Protection
+function HeroStats_TriggerRecordNotification(spellName, targetName, amountValue, isCrit, isHealing)
+    if not HeroStatsSettings then return end
+    
+    local notifyMode = HeroStatsSettings.recordNotifyMode or 2 -- Fallback cleanly to Local Chat (Mode 2)
+    
+    -- MODE 1 SHIELD: If set to 1 (Silent Mode), we completely bypass the pipeline instantly
+    if notifyMode > 1 then
+        local actionStr = isHealing and "healed" or "hit"
+        local typeStr = isHealing and "Healing" or "Damage"
+        local critStr = isCrit and "Crit" or "Normal"
+        local formattedAmt = FormatDotNumber and FormatDotNumber(amountValue) or amountValue
+        
+        local msg = string.format("New %s %s Record! %s %s %s for %s!", 
+            critStr, typeStr, spellName, actionStr, targetName or "Unknown", formattedAmt)
+        
+        -- INTERNET SHIELD: Force Mode 4 to morph into Mode 3 fallback if player is entirely solo
+        if notifyMode == 4 and not IsInGroup() then
+            notifyMode = 3
+        end
+        
+        -- MODE 2: Traditional Local Chat Output & Audio Pings Only
+        if notifyMode == 2 then
+            if isCrit then 
+                PlaySound(6674) 
+                if HeroStats_Print then HeroStats_Print("|cffffd700" .. msg .. "|r") end
+            else 
+                PlaySound(1204) 
+                if HeroStats_Print then HeroStats_Print("|cffb3b3b3" .. msg .. "|r") end
+            end
+            
+        -- MODE 3: Heroic Screen Warning Alert Display Frame (Fading RaidNotice)
+        elseif notifyMode == 3 then
+            if RaidNotice_AddMessage and RaidWarningFrame then
+                local colorTable = isCrit and { r = 1.0, g = 0.82, b = 0.0 } or { r = 0.75, g = 0.75, b = 0.75 }
+                local fullScreenMsg = "HeroStats: " .. msg
+                RaidNotice_AddMessage(RaidWarningFrame, fullScreenMsg, colorTable)
+            end
+            
+        -- MODE 4: Group Announcement Instance Router (Guaranteed to be in a group here)
+        elseif notifyMode == 4 then
+            if isCrit then PlaySound(6674) else PlaySound(1204) end            
+            -- Prefixes your clean addon brand identifier for group blære-chat text
+            local groupMsg = "HeroStats: " .. msg
+            local channel = IsInRaid() and "RAID" or "PARTY"
+            SendChatMessage(groupMsg, channel)
+        end
+    end
+end
+
 -- =========================================================================
 -- --- HeroStats - Core Engine (v0.8.0) - OnCombatLogEvent Pipeline ---
 -- =========================================================================
@@ -802,23 +852,9 @@ local function OnEvent_DAMAGE(eventType, sourceGUID, sourceName, sourceFlags, de
                     end
                 end
 
-                -- Notification and Sound Pipeline Execution
+                -- FIXED v1.0.0a3: Invokes the unified record notification engine cleanly via single line
                 if isNewRecord then
-                    local notifyMode = HeroStatsSettings.recordNotifyMode or 2
-                    if notifyMode == 2 or notifyMode == 3 then
-                        if isCritRecord then PlaySound(6674) else PlaySound(1204) end
-                    
-                        local msg = string.format("HeroStats: New %s Damage Record! %s hit %s for %s!", 
-                            isCritRecord and "Crit" or "Normal", cleanRecordSpellName, destName or "Unknown", 
-                            FormatDotNumber and FormatDotNumber(currentAmount) or currentAmount)
-                    
-                        if notifyMode == 2 then
-                            DEFAULT_CHAT_FRAME:AddMessage("|cffffd700" .. msg .. "|r")
-                        elseif notifyMode == 3 then
-                            local channel = IsInRaid() and "RAID" or (IsInGroup() and "PARTY" or "SAY")
-                            SendChatMessage(msg, channel)
-                        end
-                    end
+                    HeroStats_TriggerRecordNotification(cleanRecordSpellName, destName, currentAmount, isCritRecord, false)
                 end
             end
 
@@ -1024,23 +1060,9 @@ local function OnEvent_HEAL(eventType, sourceGUID, sourceName, sourceFlags, dest
                     end
                 end
 
-                -- Notification and Sound Pipeline Execution
+                -- FIXED v1.0.0a3: Invokes the unified record notification engine cleanly via single line
                 if isNewRecord then
-                    local notifyMode = HeroStatsSettings.recordNotifyMode or 2
-                    if notifyMode == 2 or notifyMode == 3 then
-                        if isCritRecord then PlaySound(6674) else PlaySound(1204) end
-                        
-                        local msg = string.format("HeroStats: New %s Healing Record! %s healed %s for %s!", 
-                            isCritRecord and "Crit" or "Normal", cleanRecordSpellName, destName or "Unknown", 
-                            FormatDotNumber and FormatDotNumber(currentHeal) or currentHeal)
-                        
-                        if notifyMode == 2 then
-                            DEFAULT_CHAT_FRAME:AddMessage("|cffffd700" .. msg .. "|r")
-                        elseif notifyMode == 3 then
-                            local channel = IsInRaid() and "RAID" or (IsInGroup() and "PARTY" or "SAY")
-                            SendChatMessage(msg, channel)
-                        end
-                    end
+                    HeroStats_TriggerRecordNotification(cleanRecordSpellName, destName, currentHeal, isCritRecord, false)
                 end
             end
 
