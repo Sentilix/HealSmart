@@ -35,7 +35,6 @@ groupLabel:SetPoint("TOPLEFT", subText, "BOTTOMLEFT", 0, -30)
 groupLabel:SetText("When joining a new Group or Raid:")
 groupLabel:SetTextColor(1.0, 0.82, 0.0, 1.0) -- 1. FARVESKIFT: Symmetrical Gold Header
 
--- RESTORED v1.0.0a2: Reverts strictly back to your trusted, working interface template name
 local function CreateRadioButton(name, text, yOffset)
     local cb = CreateFrame("CheckButton", name, configPanel, "InterfaceOptionsCheckButtonTemplate")
     cb:SetPoint("TOPLEFT", groupLabel, "BOTTOMLEFT", 0, yOffset)
@@ -83,7 +82,6 @@ chatLabel:SetPoint("TOPLEFT", groupLabel, "BOTTOMLEFT", 0, -110)
 chatLabel:SetText("Report Target Channel:")
 chatLabel:SetTextColor(1.0, 0.82, 0.0, 1.0) -- 3. FARVESKIFT: Symmetrical Gold Header
 
--- RESTORED v1.0.0a2: Reverts strictly back to your trusted, working interface template name
 local function CreateChatRadioButton(name, text, yOffset)
     local cb = CreateFrame("CheckButton", name, configPanel, "InterfaceOptionsCheckButtonTemplate")
     cb:SetPoint("TOPLEFT", chatLabel, "BOTTOMLEFT", 0, yOffset)
@@ -162,10 +160,9 @@ end)
 local notifyLabel = configPanel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
 notifyLabel:SetPoint("TOPLEFT", chatLabel, "BOTTOMLEFT", 0, -145) -- Safely clears row 2 dropdown spacing
 notifyLabel:SetText("Personal Record Alerts & Pings:")
-notifyLabel:SetTextColor(1.0, 0.82, 0.0, 1.0) -- 5. FARVESKIFT: Symmetrical Gold Header
+notifyLabel:SetTextColor(1.0, 0.82, 0.0, 1.0) -- Symmetrical Gold Header Layout
 
 -- 1. RADIO BUTTON: MUTE ALL (Mode 1)
--- RESTORED v1.0.0a2: Uses your trusted working framework template securely
 local cbRecNone = CreateFrame("CheckButton", "HeroStats_RadioRecNone", configPanel, "InterfaceOptionsCheckButtonTemplate")
 cbRecNone:SetPoint("TOPLEFT", notifyLabel, "BOTTOMLEFT", 0, -10)
 local textNone = _G[cbRecNone:GetName() .. "Text"]
@@ -174,8 +171,7 @@ if textNone then
     textNone:SetTextColor(1.0, 1.0, 1.0, 1.0) -- Crisp White choice label text
 end
 
--- 2. RADIO BUTTON: LOCAL ALERTS (Mode 2)
--- RESTORED v1.0.0a2: Uses your trusted working framework template securely
+-- 2. RADIO BUTTON: LOCAL CHAT ALERTS (Mode 2)
 local cbRecLocal = CreateFrame("CheckButton", "HeroStats_RadioRecLocal", configPanel, "InterfaceOptionsCheckButtonTemplate")
 cbRecLocal:SetPoint("TOPLEFT", cbRecNone, "BOTTOMLEFT", 0, -8)
 local textLocal = _G[cbRecLocal:GetName() .. "Text"]
@@ -184,10 +180,18 @@ if textLocal then
     textLocal:SetTextColor(1.0, 1.0, 1.0, 1.0) -- Crisp White choice label text
 end
 
--- 3. RADIO BUTTON: GROUP ANNOUNCE (Mode 3)
--- RESTORED v1.0.0a2: Uses your trusted working framework template securely
+-- 3. RADIO BUTTON: SCREEN WARNING ALERTS (Mode 3 - NEW!)
+local cbRecScreen = CreateFrame("CheckButton", "HeroStats_RadioRecScreen", configPanel, "InterfaceOptionsCheckButtonTemplate")
+cbRecScreen:SetPoint("TOPLEFT", cbRecLocal, "BOTTOMLEFT", 0, -8)
+local textScreen = _G[cbRecScreen:GetName() .. "Text"]
+if textScreen then
+    textScreen:SetText("Heroic Screen Warning Alert Display")
+    textScreen:SetTextColor(1.0, 1.0, 1.0, 1.0) -- Crisp White choice label text
+end
+
+-- 4. RADIO BUTTON: GROUP ANNOUNCE (Mode 4)
 local cbRecGroup = CreateFrame("CheckButton", "HeroStats_RadioRecGroup", configPanel, "InterfaceOptionsCheckButtonTemplate")
-cbRecGroup:SetPoint("TOPLEFT", cbRecLocal, "BOTTOMLEFT", 0, -8)
+cbRecGroup:SetPoint("TOPLEFT", cbRecScreen, "BOTTOMLEFT", 0, -8)
 local textGroup = _G[cbRecGroup:GetName() .. "Text"]
 if textGroup then
     textGroup:SetText("Announce to Active Raid/Party Chat")
@@ -232,20 +236,27 @@ linesSlider:SetScript("OnValueChanged", function(self, value)
     if HeroStatsSettings then HeroStatsSettings.reportLinesLimit = roundedValue end
 end)
 
--- Helper function to toggle the record radio state visually and save dynamically
+-- ==========================================
+-- RADIO ENGINE & DATABASE SYNCHRONIZATION (4-MODE MATRIX)
+-- ==========================================
+
+-- Helper function to toggle the radio state visually and save dynamically
 local function HeroStats_UpdateNotificationRadioButtons(activeMode)
     if HeroStatsSettings then
         HeroStatsSettings.recordNotifyMode = activeMode
     end
     
+    -- FIXED v1.0.0a4: Symmetrical 4-mode check toggles exclusively (only one stays true)
     if cbRecNone then cbRecNone:SetChecked(activeMode == 1) end
     if cbRecLocal then cbRecLocal:SetChecked(activeMode == 2) end
-    if cbRecGroup then cbRecGroup:SetChecked(activeMode == 3) end
+    if cbRecScreen then cbRecScreen:SetChecked(activeMode == 3) end
+    if cbRecGroup then cbRecGroup:SetChecked(activeMode == 4) end
 end
 
+-- Hook click handlers onto the interface elements securely
 cbRecNone:SetScript("OnClick", function()
     HeroStats_UpdateNotificationRadioButtons(1)
-    PlaySound(856)
+    PlaySound(856) -- Standard Blizzard interface click tone
 end)
 
 cbRecLocal:SetScript("OnClick", function()
@@ -253,14 +264,20 @@ cbRecLocal:SetScript("OnClick", function()
     PlaySound(856)
 end)
 
-cbRecGroup:SetScript("OnClick", function()
+cbRecScreen:SetScript("OnClick", function()
     HeroStats_UpdateNotificationRadioButtons(3)
+    PlaySound(856)
+end)
+
+cbRecGroup:SetScript("OnClick", function()
+    HeroStats_UpdateNotificationRadioButtons(4)
     PlaySound(856)
 end)
 
 -- ON-SHOW PIPELINE: Read database state dynamically when opening options panel
 local function HeroStats_RefreshRadioVisuals()
     if not HeroStatsSettings then return end
+    -- Pull stored record mode, fallback cleanly to Local (Mode 2) if uninitialized
     local currentMode = HeroStatsSettings.recordNotifyMode or 2
     HeroStats_UpdateNotificationRadioButtons(currentMode)
 end
@@ -287,7 +304,7 @@ end
 
 local btnResetRecords = CreateFrame("Button", "HeroStatsResetRecordsButton", configPanel, "UIPanelButtonTemplate")
 btnResetRecords:SetSize(160, 24)
-btnResetRecords:SetPoint("TOPLEFT", cbCustom, "BOTTOMLEFT", 0, -225) -- Shifted down to clear Row 3 nicely!
+btnResetRecords:SetPoint("TOPLEFT", cbRecGroup, "BOTTOMLEFT", 0, -50)
 btnResetRecords:SetText("Reset Personal Records")
 
 StaticPopupDialogs["HEROSTATS_PURGE_RECORDS_CONFIRM"] = {
