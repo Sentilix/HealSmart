@@ -766,7 +766,7 @@ function HeroStats_Report_ActivePageOverview(masterSession, viewType, fightSecon
     local headerTitle = string.format("HeroStats%s%s - %s", fightIdStr, fightNameStr, cleanViewName)
     
     if viewType == "PERSONAL_DMG_RECORDS" or viewType == "PERSONAL_HEAL_RECORDS" then
-        headerTitle = string.format("HeroStats - Lifetime Museum - %s", cleanViewName)
+        headerTitle = string.format("HeroStats - Lifetime Records - %s", cleanViewName)
     end
     table.insert(msgQueue, headerTitle)
 
