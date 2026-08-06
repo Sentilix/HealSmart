@@ -1,3 +1,13 @@
+# Changelog - HeroStats v1.0.0b1
+
+## [Added]
+* Added list of highest damage and healing abilities together with total cast count.
+* Added damage (DoT) and healing (HoT) spells being shown as separate spells.
+* Enforced `InCombatLockdown()` boundary shields on `/hs config` to block UI taint.
+
+## [Changed]
+* Report target channel can now be selected directly from header or tooltip bar.
+
 # Changelog - HeroStats v0.10.1
 
 ## [Added]
