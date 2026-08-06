@@ -804,12 +804,18 @@ function HeroStats_Report_ActivePageOverview(masterSession, viewType, fightSecon
             local maxCrit = (data.crit and type(data.crit) == "table") and (data.crit.amount or 0) or 0
             local maxLifetimeRecord = math.max(maxNormal, maxCrit)
             
+            -- FIXED v1.0.0b1: Dynamic Counter Resolver injects your true casts/ticks directly into the chat stream!
+            local isPeriodicBar = string.find(data.name or "", "%(HoT%)") or string.find(data.name or "", "%(DoT%)")
+            local activityLabel = isPeriodicBar and "Ticks" or "Casts"
+            local activityCount = isPeriodicBar and (data.ticks or 0) or (data.casts or 0)
+            
             if maxLifetimeRecord > 0 then
                 local suffixStr = (maxCrit >= maxNormal) and "Crit" or "Normal"
                 local finalAmt = FormatDotNumber and FormatDotNumber(maxLifetimeRecord) or maxLifetimeRecord
-                valueText = string.format("%s (%s)", tostring(finalAmt), suffixStr)
+                
+                valueText = string.format("%s (%s) [%d %s]", tostring(finalAmt), suffixStr, activityCount, activityLabel)
             else
-                valueText = "No records recorded"
+                valueText = string.format("[%d %s]", activityCount, activityLabel)
             end
         end
 

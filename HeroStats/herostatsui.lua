@@ -1046,12 +1046,16 @@ function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
                     critStr = data.isCrit and "Critical Heal" or "Normal Heal"
                 end
                 
-                -- Dynamic Tooltip Compiler injects your lifetime museum metrics beautifully below your name header
+                -- FIXED v1.0.0b1: Dynamic Tooltip Compiler injects your lifetime museum metrics beautifully below your name header
+                local isHoTSpell = string.find(data.name or "", "%([HD]oT%)")
+                local counterLabel = isHoTSpell and "Total Ticks:" or "Total Casts:"
+                local finalCountVal = isHoTSpell and (data.ticks or 0) or (data.casts or 0)
+
                 GameTooltip:AddDoubleLine("Spell/Ability:", string.format("|cffffffff%s|r", data.name or "Unknown"))
                 GameTooltip:AddDoubleLine("Max. Cast:", string.format("|cffffd700%s|r (%s)", formattedAmt, critStr))
                 GameTooltip:AddDoubleLine("Target:", string.format("|cffffffff%s|r", data.target or "Unknown"))
                 GameTooltip:AddDoubleLine("Date:", string.format("|cffffffff%s|r", data.date or "Unknown"))
-                GameTooltip:AddDoubleLine("Total Casts:", string.format("|cffffffff%d|r", data.casts or 0))
+                GameTooltip:AddDoubleLine(counterLabel, string.format("|cffffffff%d|r", finalCountVal))
 
                 GameTooltip:Show()
                 return -- Ironclad exit pathway blocks the legacy session modules below completely!
