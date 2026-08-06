@@ -48,7 +48,10 @@ end
 
 -- FIXED v1.0.0b1: Upgraded asynchronous damage reporter with native channel validation and local print short-circuiting
 function HeroStats_Report_DamageDone(playerData, channel, isCustom, customNum, fightSeconds)
-    if not playerData or not playerData.spellDamage then return end
+    if not playerData or not playerData.spellDamage then 
+        print("No player data");
+		return
+    end
     
     -- FIXED v1.0.0b1: Dynamic Channel Validation Interceptor routes into mock LOCAL state safely
     if not HeroStats_IsChannelAccessible or not HeroStats_IsChannelAccessible(channel) then
@@ -636,6 +639,131 @@ function HeroStats_Report_PersonalHealing(recordData, channel, isCustom, customN
     else
         if HeroStats_SendQueuedMessages then
             HeroStats_SendQueuedMessages(msgQueue, channel, isCustom, customNum)
+        end
+    end
+end
+
+-- FIXED v1.0.0b1: Universal Asynchronous Page Overview Reporter explicitly handles target network channels
+function HeroStats_Report_ActivePageOverview(masterSession, viewType, fightSeconds, targetChannel)
+    if not masterSession then return end
+
+    -- FIXED v1.0.0b1: Dynamically reads the channel passed from the menu selection with a safe network lock
+    local channel = targetChannel or "LOCAL"
+    if not HeroStats_IsChannelAccessible or not HeroStats_IsChannelAccessible(channel) then
+        channel = "LOCAL"
+    end
+
+    -- Pull the correct data array block based on healing vs damage focus
+    local isHealingPage = (viewType == "HEALING" or viewType == "HEAL_CRIT" or viewType == "OVERHEALING" or viewType == "MANA_EFF" or viewType == "MANA_GAINED" or viewType == "DISPELS" or viewType == "BUFFS" or viewType == "DEATHS" or viewType == "RESURRECTS" or viewType == "PERSONAL_HEAL_RECORDS")
+    
+    local sourceData = nil
+    if viewType == "PERSONAL_DMG_RECORDS" or viewType == "PERSONAL_HEAL_RECORDS" then
+        sourceData = masterSession
+    else
+        sourceData = isHealingPage and masterSession.healers or masterSession.damagers
+    end
+
+    if not sourceData then return end
+
+    local msgQueue = {}
+    local duration = fightSeconds or 1
+    
+    local headerTitle = string.format("HeroStats - Session Overview [%s]:", viewType)
+    if masterSession.name and type(masterSession.name) == "string" then
+        headerTitle = string.format("HeroStats - %s [%s]:", masterSession.name, viewType)
+    end
+    table.insert(msgQueue, headerTitle)
+
+    -- Sort current players/records based on active view type requirements
+    local sortedList = {}
+    for pName, pData in pairs(sourceData) do
+        local item = type(pData) == "table" and pData or { amount = pData }
+        item.name = item.name or pName
+        table.insert(sortedList, item)
+    end
+
+    -- FIXED v1.0.0b1: Sorter uses clean 'a' and 'b' parameters exclusively to prevent global nil crashes
+    table.sort(sortedList, function(a, b)
+        if viewType == "HEALING" then return (a.effective or 0) > (b.effective or 0)
+        elseif viewType == "HEAL_CRIT" then return (a.healCritPct or 0) > (b.healCritPct or 0)
+        elseif viewType == "OVERHEALING" then return (a.percent or 0) < (b.percent or 0)
+        elseif viewType == "MANA_EFF" then return (a.hpm or 0) > (b.hpm or 0)
+        elseif viewType == "MANA_GAINED" then return (a.manaGained or 0) > (b.manaGained or 0)
+        elseif viewType == "DAMAGE_DONE" then return (a.damageDone or 0) > (b.damageDone or 0)
+        elseif viewType == "DMG_CRIT" then return (a.dmgCritPct or 0) > (b.dmgCritPct or 0)
+        elseif viewType == "DAMAGE_TAKEN" then return (a.damageTaken or 0) > (b.damageTaken or 0)
+        elseif viewType == "DISPELS" then return (a.dispels or 0) > (b.dispels or 0)
+        elseif viewType == "BUFFS" then return (a.buffs or 0) > (b.buffs or 0)
+        elseif viewType == "DEATHS" then return (a.deaths or 0) > (b.deaths or 0)
+        elseif viewType == "RESURRECTS" then return (a.resurrects or 0) > (b.resurrects or 0)
+        elseif viewType == "PERSONAL_DMG_RECORDS" or viewType == "PERSONAL_HEAL_RECORDS" then
+            local aNormal = (a.normal and type(a.normal) == "table") and (a.normal.amount or 0) or 0
+            local aCrit = (a.crit and type(a.crit) == "table") and (a.crit.amount or 0) or 0
+            local aMax = math.max(aNormal, aCrit)
+            
+            local bNormal = (b.normal and type(b.normal) == "table") and (b.normal.amount or 0) or 0
+            local bCrit = (b.crit and type(b.crit) == "table") and (b.crit.amount or 0) or 0
+            local bMax = math.max(bNormal, bCrit)
+            
+            return aMax > bMax
+        end
+        return false
+    end)
+
+    -- Compile top 5 report data strings inside loop using the validated 'data' pointer
+    for i = 1, math.min(5, #sortedList) do
+        local data = sortedList[i]
+        local valueText = "0"
+
+        if viewType == "HEALING" then
+            local formattedAmt = FormatDotNumber and FormatDotNumber(data.effective) or data.effective
+            valueText = string.format("%s (%.0f HPS)", formattedAmt, data.effective / duration)
+        elseif viewType == "HEAL_CRIT" or viewType == "DMG_CRIT" then
+            valueText = string.format("%.1f%% Crit", data.healCritPct or data.dmgCritPct or 0)
+        elseif viewType == "OVERHEALING" then
+            valueText = string.format("%.1f%% Efficiency", data.percent or 0)
+        elseif viewType == "MANA_EFF" then
+            valueText = string.format("%.1f HPM", data.hpm or 0)
+        elseif viewType == "MANA_GAINED" then
+            local formattedAmt = FormatDotNumber and FormatDotNumber(data.manaGained) or data.manaGained
+            valueText = string.format("%s mana", formattedAmt)
+        elseif viewType == "DAMAGE_DONE" then
+            local formattedAmt = FormatDotNumber and FormatDotNumber(data.damageDone) or data.damageDone
+            valueText = string.format("%s (%.0f DPS)", formattedAmt, data.damageDone / duration)
+        elseif viewType == "DAMAGE_TAKEN" then
+            local formattedAmt = FormatDotNumber and FormatDotNumber(data.damageTaken) or data.damageTaken
+            valueText = string.format("%s (%.0f DTPS)", formattedAmt, data.damageTaken / duration)
+        elseif viewType == "DISPELS" then valueText = string.format("%d Dispels", data.dispels or 0)
+        elseif viewType == "BUFFS" then valueText = string.format("%d Buffs", data.buffs or 0)
+        elseif viewType == "DEATHS" then valueText = string.format("%d Deaths", data.deaths or 0)
+        elseif viewType == "RESURRECTS" then valueText = string.format("%d Resses", data.resurrects or 0)
+        elseif viewType == "PERSONAL_DMG_RECORDS" or viewType == "PERSONAL_HEAL_RECORDS" then
+            -- FIXED v1.0.0b1: Core element uses data loop pointer flawlessly with a guaranteed fallback string
+            local maxNormal = (data.normal and type(data.normal) == "table") and (data.normal.amount or 0) or 0
+            local maxCrit = (data.crit and type(data.crit) == "table") and (data.crit.amount or 0) or 0
+            local maxLifetimeRecord = math.max(maxNormal, maxCrit)
+            
+            if maxLifetimeRecord > 0 then
+                local suffixStr = (maxCrit >= maxNormal) and "Crit" or "Normal"
+                local finalAmt = FormatDotNumber and FormatDotNumber(maxLifetimeRecord) or maxLifetimeRecord
+                valueText = string.format("%s (%s)", tostring(finalAmt), suffixStr)
+            else
+                valueText = "No Record Established"
+            end
+        end
+
+        local lineMsg = string.format("%d. %s: %s", i, data.name or "Unknown", valueText)
+        table.insert(msgQueue, lineMsg)
+    end
+
+    -- Pipeline execution short-circuits safely to local prints
+    if channel == "LOCAL" then
+        for _, rawMessage in ipairs(msgQueue) do
+            if HeroStats_Print then HeroStats_Print(rawMessage) end
+        end
+    else
+        if HeroStats_SendQueuedMessages then
+            HeroStats_SendQueuedMessages(msgQueue, channel, false, nil)
         end
     end
 end

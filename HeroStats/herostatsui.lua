@@ -262,37 +262,84 @@ if shoutButton:GetNormalTexture() then
     shoutButton:GetNormalTexture():SetAllPoints(shoutButton)
 end
 
-shoutButton:SetScript("OnClick", function()
-    if HeroStats_ReportCurrentPageToChat then
-        HeroStats_ReportCurrentPageToChat()
-    end
-end)
-
-shoutButton:SetScript("OnEnter", function(self)
-    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
+-- FIXED v1.0.0b1: Main header button dynamically opens the unified ad-hoc reporting menu layout upon click
+shoutButton:SetScript("OnClick", function(self)
+    -- 1. Query the true master page API configuration layers safely to resolve the active page
+    local pageRecord = HeroStats_GetPageRecord and HeroStats_GetPageRecord(HeroStats_CurrentActivePage)
+    local clickedViewType = pageRecord and pageRecord.name or "DAMAGE_DONE"
     
-    -- Local lookup dictionary for translation mapping
-    local channelNames = {
-        [1] = "/Raid or /Party",
-        [2] = "/say",
-        [3] = "/yell",
-        [4] = "/guild",
-        [5] = "Custom Channel"
+    -- Symmetri calibration: Synchronize view mapping token names cleanly for overview data loops
+    if clickedViewType == "HEALING_DONE" then clickedViewType = "HEALING" end
+    if clickedViewType == "EFFICIENCY" then clickedViewType = "OVERHEALING" end
+
+    -- 2. Advanced Data Router selects combat fight session block vs lifetime museum tracking arrays
+    local activeSessionData = nil
+    if clickedViewType == "PERSONAL_DMG_RECORDS" then
+        activeSessionData = HeroStatsSettings and HeroStatsSettings.personalDamageRecords
+    elseif clickedViewType == "PERSONAL_HEAL_RECORDS" then
+        activeSessionData = HeroStatsSettings and HeroStatsSettings.personalHealingRecords
+    else
+        if HeroStatsSettings and HeroStatsSettings.sessions and HeroStatsSettings.activeSessionIndex then
+            activeSessionData = HeroStatsSettings.sessions[HeroStatsSettings.activeSessionIndex]
+        end
+    end
+
+    local currentFightDuration = fightSeconds or 1
+
+    -- Allocate or fetch the dedicated Blizzard dropdown frame template asset securely
+    local menuFrame = HeroStatsHeaderReportMenuFrame or CreateFrame("Frame", "HeroStatsHeaderReportMenuFrame", UIParent, "UIDropdownMenuTemplate")
+
+    -- 3. Define the ad-hoc channels layout map cleanly. Menu items explicitly pass the channel choices!
+    local menuList = {
+        { text = "Report Session Breakdown:", isTitle = true, notCheckable = true },
+        
+        { text = "Report to Guild Chat", notCheckable = true, func = function() 
+            if HeroStats_Report_ActivePageOverview and activeSessionData then
+                HeroStats_Report_ActivePageOverview(activeSessionData, clickedViewType, currentFightDuration, "GUILD")
+            end
+        end },
+        
+        { text = "Report to Instance (Raid/Party)", notCheckable = true, func = function() 
+            local instanceChannel = IsInRaid() and "RAID" or (IsInGroup() and "PARTY" or "LOCAL")
+            if HeroStats_Report_ActivePageOverview and activeSessionData then
+                HeroStats_Report_ActivePageOverview(activeSessionData, clickedViewType, currentFightDuration, instanceChannel)
+            end
+        end },
+        
+        { text = "Report to Say (Local Zone)", notCheckable = true, func = function() 
+            if HeroStats_Report_ActivePageOverview and activeSessionData then
+                HeroStats_Report_ActivePageOverview(activeSessionData, clickedViewType, currentFightDuration, "SAY")
+            end
+        end },
+        
+        { text = "Report to Custom Channel...", notCheckable = true, func = function() 
+            local dialog = StaticPopup_Show("HEROSTATS_REPORT_CHANNEL_INPUT")
+            if dialog then dialog.data = { data = activeSessionData, viewType = clickedViewType, duration = currentFightDuration } end 
+        end },
+        
+        { text = "Whisper Player...", notCheckable = true, func = function() 
+            local dialog = StaticPopup_Show("HEROSTATS_REPORT_WHISPER_INPUT")
+            if dialog then dialog.data = { data = activeSessionData, viewType = clickedViewType, duration = currentFightDuration } end 
+        end },
+        
+        { text = "Cancel", notCheckable = true, func = function() CloseDropDownMenus() end }
     }
     
-    -- Fetch the active limits and channel paths from the settings database safely
-    local currentLines = HeroStatsSettings and HeroStatsSettings.reportLinesLimit or 5
-    local currentMode = HeroStatsSettings and HeroStatsSettings.reportChannelMode or 1
-    local channelText = channelNames[currentMode] or "Raid / Party"
+    -- Initialize and inject the menu items into the Blizzard UI frame layout
+    UIDropDownMenu_Initialize(menuFrame, function(self, level)
+        for _, item in ipairs(menuList) do
+            UIDropDownMenu_AddButton(item, level)
+        end
+    end, "MENU")
     
-    -- Append the channel number to the string if the selection is set to custom channel
-    if currentMode == 5 and HeroStatsSettings and HeroStatsSettings.reportCustomChannelNum then
-        channelText = "Channel " .. HeroStatsSettings.reportCustomChannelNum
-    end
-    
-    -- Compile and show the dynamic live tooltip message screen
-    local dynamicTooltipText = string.format("Report Top %d to %s", currentLines, channelText)
-    GameTooltip:SetText(dynamicTooltipText, 1, 1, 1, 1, true)
+    -- Toggle and display the dropdown menu directly beneath the shoutButton frame element
+    ToggleDropDownMenu(1, nil, menuFrame, self, 0, 0)
+end)
+
+-- FIXED v1.0.0b1: Streamlined compact tooltip display
+shoutButton:SetScript("OnEnter", function(self)
+    GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
+    GameTooltip:SetText("Report Session Breakdown", 1, 1, 1, 1, true)
     GameTooltip:Show()
 end)
 
