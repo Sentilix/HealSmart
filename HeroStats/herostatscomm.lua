@@ -2,40 +2,59 @@
 -- HeroStats - Communications & Reporting Engine (v0.10.2)
 -- ==========================================
 
--- FIXED v0.10.2: Async chat queue engine handles global and custom channels to prevent silent spam bans
+-- FIXED v1.0.0b1: Async chat queue engine handles all secure server channels via C_Timer to bypass Blizzard action blockades
 function HeroStats_SendQueuedMessages(msgList, channel, isCustom, customNum)
     if not msgList or #msgList == 0 then return end
 
-    -- Route through the timer queue if it is a global server channel or a numbered custom channel
-    local useTimerQueue = (channel == "GUILD" or channel == "OFFICER" or isCustom)
-
-    if useTimerQueue then
-        local index = 1
-        local function SendNextLine()
-            if index <= #msgList then
-                local lineMsg = msgList[index]
-                if isCustom and customNum then
-                    -- Safely tunnels your lines into custom numbered channels with a 300ms window
-                    SendChatMessage(lineMsg, "CHANNEL", nil, customNum)
-                else
-                    SendChatMessage(lineMsg, channel)
-                end
-                index = index + 1
-                C_Timer.After(0.3, SendNextLine)
+    -- FIXED v1.0.0b1: Completely eliminated instant firing loops for network channels to prevent UI Taint bans
+    local index = 1
+    local function SendNextLine()
+        if index <= #msgList then
+            local lineMsg = msgList[index]
+            
+            -- Dynamic channel router resolves custom channels, whispers, and standard network layers safely
+            if isCustom and customNum then
+                SendChatMessage(lineMsg, "CHANNEL", nil, customNum)
+            elseif channel == "WHISPER" and customNum then
+                -- Note: customNum contains the target player's name string forwarded from your popup layers
+                SendChatMessage(lineMsg, "WHISPER", nil, customNum)
+            else
+                SendChatMessage(lineMsg, channel)
             end
-        end
-        SendNextLine()
-    else
-        -- Instant firing loop remains locked strictly to local secure layers (Raid/Party/Say)
-        for _, lineMsg in ipairs(msgList) do
-            SendChatMessage(lineMsg, channel)
+            
+            index = index + 1
+            C_Timer.After(0.3, SendNextLine) -- Safe 300ms window bypasses Blizzard anti-spam shields flawlessly
         end
     end
+    
+    -- Fire the asynchronous serialization cascade pipeline instantly
+    SendNextLine()
 end
 
--- FIXED v0.10.2: Upgraded to feed the new asynchronous packet management queue layout
+-- FIXED v1.0.0b1: Universal Network Channel Validator
+function HeroStats_IsChannelAccessible(channel)
+    if not channel then return false end
+    
+    if (channel == "RAID" and not IsInRaid()) or (channel == "PARTY" and not IsInGroup()) then
+        return false
+    end
+    
+    if channel == "GUILD" and not IsInGuild() then
+        return false
+    end
+    
+    return true
+end
+
+-- FIXED v1.0.0b1: Upgraded asynchronous damage reporter with native channel validation and local print short-circuiting
 function HeroStats_Report_DamageDone(playerData, channel, isCustom, customNum, fightSeconds)
     if not playerData or not playerData.spellDamage then return end
+    
+    -- FIXED v1.0.0b1: Dynamic Channel Validation Interceptor routes into mock LOCAL state safely
+    if not HeroStats_IsChannelAccessible or not HeroStats_IsChannelAccessible(channel) then
+        channel = "LOCAL"
+        isCustom = false
+    end
     
     local msgQueue = {}
     local dps = (fightSeconds > 0) and (playerData.damageDone / fightSeconds) or 0
@@ -57,12 +76,80 @@ function HeroStats_Report_DamageDone(playerData, channel, isCustom, customNum, f
         table.insert(msgQueue, lineMsg)
     end
     
-    HeroStats_SendQueuedMessages(msgQueue, channel, isCustom, customNum)
+    -- PIPELINE RESOLUTION BLOCK: Short-circuits asynchronous engine if channel evaluates to LOCAL
+    if channel == "LOCAL" then
+        for _, rawMessage in ipairs(msgQueue) do
+            if HeroStats_Print then 
+                HeroStats_Print(rawMessage) -- Routes safely straight into your custom cyan branding factory
+            end
+        end
+    else
+        -- Native asynchronous packet management deployment framework for server channels
+        if HeroStats_SendQueuedMessages then
+            HeroStats_SendQueuedMessages(msgQueue, channel, isCustom, customNum)
+        end
+    end
 end
 
--- FIXED v0.10.2: Upgraded to feed the new asynchronous packet management queue layout
+
+-- FIXED v1.0.0b1: Upgraded asynchronous healing reporter with native channel validation and local print short-circuiting
+function HeroStats_Report_HealingDone(playerData, channel, isCustom, customNum, fightSeconds)
+    if not playerData or not playerData.spellHeals then return end
+    
+    -- FIXED v1.0.0b1: Dynamic Channel Validation Interceptor routes into mock LOCAL state safely
+    if not HeroStats_IsChannelAccessible or not HeroStats_IsChannelAccessible(channel) then
+        channel = "LOCAL"
+        isCustom = false
+    end
+    
+    local msgQueue = {}
+    local hps = (fightSeconds > 0) and (playerData.effective / fightSeconds) or 0
+    local formattedTotal = FormatDotNumber and FormatDotNumber(playerData.effective) or playerData.effective
+    local headerMsg = string.format("HeroStats - Top Healing Done for %s: %s (%.0f HPS):", playerData.name or "Unknown", formattedTotal, hps)
+    table.insert(msgQueue, headerMsg)
+
+    local sortedSpells = {}
+    for spellName, hData in pairs(playerData.spellHeals) do
+        if hData.effective > 0 then 
+            table.insert(sortedSpells, { name = spellName, amount = hData.effective, overheal = hData.overheal or 0 }) 
+        end
+    end
+    table.sort(sortedSpells, function(a, b) return a.amount > b.amount end)
+
+    for i = 1, math.min(5, #sortedSpells) do
+        local s = sortedSpells[i]
+        local sharePct = (playerData.effective > 0) and ((s.amount / playerData.effective) * 100) or 0
+        local totalSpellHeal = s.amount + s.overheal
+        local ohPct = (totalSpellHeal > 0) and ((s.overheal / totalSpellHeal) * 100) or 0
+        local formattedAmt = FormatDotNumber and FormatDotNumber(s.amount) or s.amount
+        local lineMsg = string.format("%d. %s: %s (%.1f%%) [OH: %.0f%%]", i, s.name, formattedAmt, sharePct, ohPct)
+        table.insert(msgQueue, lineMsg)
+    end
+    
+    -- PIPELINE RESOLUTION BLOCK: Short-circuits asynchronous engine if channel evaluates to LOCAL
+    if channel == "LOCAL" then
+        for _, rawMessage in ipairs(msgQueue) do
+            if HeroStats_Print then 
+                HeroStats_Print(rawMessage) -- Routes safely straight into your custom cyan branding factory
+            end
+        end
+    else
+        -- Native asynchronous packet management deployment framework for server channels
+        if HeroStats_SendQueuedMessages then
+            HeroStats_SendQueuedMessages(msgQueue, channel, isCustom, customNum)
+        end
+    end
+end
+
+-- FIXED v1.0.0b1: Upgraded asynchronous damage crits reporter with native channel validation and local print short-circuiting
 function HeroStats_Report_DamageCrits(playerData, channel, isCustom, customNum)
     if not playerData or not playerData.spellCrits then return end
+    
+    -- FIXED v1.0.0b1: Dynamic Channel Validation Interceptor routes into mock LOCAL state safely
+    if not HeroStats_IsChannelAccessible or not HeroStats_IsChannelAccessible(channel) then
+        channel = "LOCAL"
+        isCustom = false
+    end
     
     local msgQueue = {}
     local headerMsg = string.format("HeroStats - Top Damage Crits for %s:", playerData.name or "Unknown")
@@ -88,12 +175,27 @@ function HeroStats_Report_DamageCrits(playerData, channel, isCustom, customNum)
         table.insert(msgQueue, lineMsg)
     end
     
-    HeroStats_SendQueuedMessages(msgQueue, channel, isCustom, customNum)
+    -- PIPELINE RESOLUTION BLOCK: Short-circuits asynchronous engine if channel evaluates to LOCAL
+    if channel == "LOCAL" then
+        for _, rawMessage in ipairs(msgQueue) do
+            if HeroStats_Print then HeroStats_Print(rawMessage) end
+        end
+    else
+        if HeroStats_SendQueuedMessages then
+            HeroStats_SendQueuedMessages(msgQueue, channel, isCustom, customNum)
+        end
+    end
 end
 
--- FIXED v0.10.2: Upgraded to feed the new asynchronous packet management queue layout
+-- FIXED v1.0.0b1: Upgraded asynchronous damage taken reporter with native channel validation and local print short-circuiting
 function HeroStats_Report_DamageTaken(playerData, channel, isCustom, customNum, fightSeconds)
     if not playerData or not playerData.spellTaken then return end
+    
+    -- FIXED v1.0.0b1: Dynamic Channel Validation Interceptor routes into mock LOCAL state safely
+    if not HeroStats_IsChannelAccessible or not HeroStats_IsChannelAccessible(channel) then
+        channel = "LOCAL"
+        isCustom = false
+    end
     
     local msgQueue = {}
     local dtps = (fightSeconds > 0) and (playerData.damageTaken / fightSeconds) or 0
@@ -103,7 +205,8 @@ function HeroStats_Report_DamageTaken(playerData, channel, isCustom, customNum, 
 
     local sortedSpells = {}
     for spellName, amt in pairs(playerData.spellTaken) do
-        if amt > 0 then table.insert(sortedSpells, { name = spellName, amount = amt }) end end
+        if amt > 0 then table.insert(sortedSpells, { name = spellName, amount = amt }) end 
+    end
     table.sort(sortedSpells, function(a, b) return a.amount > b.amount end)
 
     for i = 1, math.min(5, #sortedSpells) do
@@ -114,41 +217,27 @@ function HeroStats_Report_DamageTaken(playerData, channel, isCustom, customNum, 
         table.insert(msgQueue, lineMsg)
     end
     
-    HeroStats_SendQueuedMessages(msgQueue, channel, isCustom, customNum)
+    -- PIPELINE RESOLUTION BLOCK: Short-circuits asynchronous engine if channel evaluates to LOCAL
+    if channel == "LOCAL" then
+        for _, rawMessage in ipairs(msgQueue) do
+            if HeroStats_Print then HeroStats_Print(rawMessage) end
+        end
+    else
+        if HeroStats_SendQueuedMessages then
+            HeroStats_SendQueuedMessages(msgQueue, channel, isCustom, customNum)
+        end
+    end
 end
 
--- FIXED v0.10.2: Upgraded to feed the new asynchronous packet management queue layout
-function HeroStats_Report_HealingDone(playerData, channel, isCustom, customNum, fightSeconds)
-    if not playerData or not playerData.spellHeals then return end
-    
-    local msgQueue = {}
-    local hps = (fightSeconds > 0) and (playerData.effective / fightSeconds) or 0
-    local formattedTotal = FormatDotNumber and FormatDotNumber(playerData.effective) or playerData.effective
-    local headerMsg = string.format("HeroStats - Top Healing Done for %s: %s (%.0f HPS):", playerData.name or "Unknown", formattedTotal, hps)
-    table.insert(msgQueue, headerMsg)
-
-    local sortedSpells = {}
-    for spellName, hData in pairs(playerData.spellHeals) do
-        if hData.effective > 0 then table.insert(sortedSpells, { name = spellName, amount = hData.effective, overheal = hData.overheal or 0 }) end
-    end
-    table.sort(sortedSpells, function(a, b) return a.amount > b.amount end)
-
-    for i = 1, math.min(5, #sortedSpells) do
-        local s = sortedSpells[i]
-        local sharePct = (playerData.effective > 0) and ((s.amount / playerData.effective) * 100) or 0
-        local totalSpellHeal = s.amount + s.overheal
-        local ohPct = (totalSpellHeal > 0) and ((s.overheal / totalSpellHeal) * 100) or 0
-        local formattedAmt = FormatDotNumber and FormatDotNumber(s.amount) or s.amount
-        local lineMsg = string.format("%d. %s: %s (%.1f%%) [OH: %.0f%%]", i, s.name, formattedAmt, sharePct, ohPct)
-        table.insert(msgQueue, lineMsg)
-    end
-    
-    HeroStats_SendQueuedMessages(msgQueue, channel, isCustom, customNum)
-end
-
--- FIXED v0.10.2: Upgraded to feed the new asynchronous packet management queue layout
+-- FIXED v1.0.0b1: Upgraded asynchronous healing crits reporter with native channel validation and local print short-circuiting
 function HeroStats_Report_HealingCrits(playerData, channel, isCustom, customNum)
     if not playerData or not playerData.spellHealCrits then return end
+    
+    -- FIXED v1.0.0b1: Dynamic Channel Validation Interceptor routes into mock LOCAL state safely
+    if not HeroStats_IsChannelAccessible or not HeroStats_IsChannelAccessible(channel) then
+        channel = "LOCAL"
+        isCustom = false
+    end
     
     local msgQueue = {}
     local headerMsg = string.format("HeroStats - Top Healing Crits for %s:", playerData.name or "Unknown")
@@ -174,12 +263,27 @@ function HeroStats_Report_HealingCrits(playerData, channel, isCustom, customNum)
         table.insert(msgQueue, lineMsg)
     end
     
-    HeroStats_SendQueuedMessages(msgQueue, channel, isCustom, customNum)
+    -- PIPELINE RESOLUTION BLOCK: Short-circuits asynchronous engine if channel evaluates to LOCAL
+    if channel == "LOCAL" then
+        for _, rawMessage in ipairs(msgQueue) do
+            if HeroStats_Print then HeroStats_Print(rawMessage) end
+        end
+    else
+        if HeroStats_SendQueuedMessages then
+            HeroStats_SendQueuedMessages(msgQueue, channel, isCustom, customNum)
+        end
+    end
 end
 
--- FIXED v0.10.2: Upgraded to feed the new asynchronous packet management queue layout
+-- FIXED v1.0.0b1: Upgraded asynchronous efficiency reporter with native channel validation and local print short-circuiting
 function HeroStats_Report_Efficiency(playerData, channel, isCustom, customNum)
     if not playerData or not playerData.spellHeals then return end
+    
+    -- FIXED v1.0.0b1: Dynamic Channel Validation Interceptor routes into mock LOCAL state safely
+    if not HeroStats_IsChannelAccessible or not HeroStats_IsChannelAccessible(channel) then
+        channel = "LOCAL"
+        isCustom = false
+    end
     
     local msgQueue = {}
     local headerMsg = string.format("HeroStats - Overhealing Breakdown for %s (%.1f%% Efficiency):", playerData.name or "Unknown", playerData.percent or 0)
@@ -188,7 +292,9 @@ function HeroStats_Report_Efficiency(playerData, channel, isCustom, customNum)
     local sortedSpells = {}
     for spellName, hData in pairs(playerData.spellHeals) do
         local total = (hData.effective or 0) + (hData.overheal or 0)
-        if total > 0 then table.insert(sortedSpells, { name = spellName, effective = hData.effective or 0, overheal = hData.overheal or 0, total = total }) end
+        if total > 0 then 
+            table.insert(sortedSpells, { name = spellName, effective = hData.effective or 0, overheal = hData.overheal or 0, total = total }) 
+        end
     end
     table.sort(sortedSpells, function(a, b) return b.overheal > a.overheal end)
 
@@ -200,12 +306,27 @@ function HeroStats_Report_Efficiency(playerData, channel, isCustom, customNum)
         table.insert(msgQueue, lineMsg)
     end
     
-    HeroStats_SendQueuedMessages(msgQueue, channel, isCustom, customNum)
+    -- PIPELINE RESOLUTION BLOCK: Short-circuits asynchronous engine if channel evaluates to LOCAL
+    if channel == "LOCAL" then
+        for _, rawMessage in ipairs(msgQueue) do
+            if HeroStats_Print then HeroStats_Print(rawMessage) end
+        end
+    else
+        if HeroStats_SendQueuedMessages then
+            HeroStats_SendQueuedMessages(msgQueue, channel, isCustom, customNum)
+        end
+    end
 end
 
--- FIXED v0.10.2: Upgraded to feed the new asynchronous packet management queue layout
+-- FIXED v1.0.0b1: Upgraded asynchronous mana efficiency reporter with native channel validation and local print short-circuiting
 function HeroStats_Report_ManaEff(playerData, channel, isCustom, customNum)
     if not playerData or not playerData.spellMana then return end
+    
+    -- FIXED v1.0.0b1: Dynamic Channel Validation Interceptor routes into mock LOCAL state safely
+    if not HeroStats_IsChannelAccessible or not HeroStats_IsChannelAccessible(channel) then
+        channel = "LOCAL"
+        isCustom = false
+    end
     
     local msgQueue = {}
     local headerMsg = string.format("HeroStats - Heal per Mana for %s (%.1f HPM):", playerData.name or "Unknown", playerData.hpm or 0)
@@ -232,12 +353,27 @@ function HeroStats_Report_ManaEff(playerData, channel, isCustom, customNum)
         table.insert(msgQueue, lineMsg)
     end
     
-    HeroStats_SendQueuedMessages(msgQueue, channel, isCustom, customNum)
+    -- PIPELINE RESOLUTION BLOCK: Short-circuits asynchronous engine if channel evaluates to LOCAL
+    if channel == "LOCAL" then
+        for _, rawMessage in ipairs(msgQueue) do
+            if HeroStats_Print then HeroStats_Print(rawMessage) end
+        end
+    else
+        if HeroStats_SendQueuedMessages then
+            HeroStats_SendQueuedMessages(msgQueue, channel, isCustom, customNum)
+        end
+    end
 end
 
--- FIXED v0.10.2: Upgraded to feed the new asynchronous packet management queue layout
+-- FIXED v1.0.0b1: Upgraded asynchronous mana gained reporter with native channel validation and local print short-circuiting
 function HeroStats_Report_ManaGained(playerData, channel, isCustom, customNum)
     if not playerData or not playerData.spellManaGained then return end
+    
+    -- FIXED v1.0.0b1: Dynamic Channel Validation Interceptor routes into mock LOCAL state safely
+    if not HeroStats_IsChannelAccessible or not HeroStats_IsChannelAccessible(channel) then
+        channel = "LOCAL"
+        isCustom = false
+    end
     
     local msgQueue = {}
     local formattedTotal = FormatDotNumber and FormatDotNumber(playerData.manaGained) or playerData.manaGained
@@ -257,12 +393,27 @@ function HeroStats_Report_ManaGained(playerData, channel, isCustom, customNum)
         table.insert(msgQueue, lineMsg)
     end
     
-    HeroStats_SendQueuedMessages(msgQueue, channel, isCustom, customNum)
+    -- PIPELINE RESOLUTION BLOCK: Short-circuits asynchronous engine if channel evaluates to LOCAL
+    if channel == "LOCAL" then
+        for _, rawMessage in ipairs(msgQueue) do
+            if HeroStats_Print then HeroStats_Print(rawMessage) end
+        end
+    else
+        if HeroStats_SendQueuedMessages then
+            HeroStats_SendQueuedMessages(msgQueue, channel, isCustom, customNum)
+        end
+    end
 end
 
--- FIXED v0.10.2: Upgraded to feed the new asynchronous packet management queue layout
+-- FIXED v1.0.0b1: Upgraded asynchronous dispels reporter with native channel validation and local print short-circuiting
 function HeroStats_Report_Dispels(playerData, channel, isCustom, customNum)
     if not playerData or not playerData.spellDispels then return end
+    
+    -- FIXED v1.0.0b1: Dynamic Channel Validation Interceptor routes into mock LOCAL state safely
+    if not HeroStats_IsChannelAccessible or not HeroStats_IsChannelAccessible(channel) then
+        channel = "LOCAL"
+        isCustom = false
+    end
     
     local msgQueue = {}
     local headerMsg = string.format("HeroStats - Dispels Breakdown for %s (%d total):", playerData.name or "Unknown", playerData.dispels or 0)
@@ -280,12 +431,27 @@ function HeroStats_Report_Dispels(playerData, channel, isCustom, customNum)
         table.insert(msgQueue, lineMsg)
     end
     
-    HeroStats_SendQueuedMessages(msgQueue, channel, isCustom, customNum)
+    -- PIPELINE RESOLUTION BLOCK: Short-circuits asynchronous engine if channel evaluates to LOCAL
+    if channel == "LOCAL" then
+        for _, rawMessage in ipairs(msgQueue) do
+            if HeroStats_Print then HeroStats_Print(rawMessage) end
+        end
+    else
+        if HeroStats_SendQueuedMessages then
+            HeroStats_SendQueuedMessages(msgQueue, channel, isCustom, customNum)
+        end
+    end
 end
 
--- FIXED v0.10.2: Upgraded to feed the new asynchronous packet management queue layout
+-- FIXED v1.0.0b1: Upgraded asynchronous buffs reporter with native channel validation and local print short-circuiting
 function HeroStats_Report_Buffs(playerData, channel, isCustom, customNum)
     if not playerData or not playerData.spellBuffs then return end
+    
+    -- FIXED v1.0.0b1: Dynamic Channel Validation Interceptor routes into mock LOCAL state safely
+    if not HeroStats_IsChannelAccessible or not HeroStats_IsChannelAccessible(channel) then
+        channel = "LOCAL"
+        isCustom = false
+    end
     
     local msgQueue = {}
     local headerMsg = string.format("HeroStats - Applied Buffs Breakdown for %s (%d total):", playerData.name or "Unknown", playerData.buffs or 0)
@@ -303,12 +469,27 @@ function HeroStats_Report_Buffs(playerData, channel, isCustom, customNum)
         table.insert(msgQueue, lineMsg)
     end
     
-    HeroStats_SendQueuedMessages(msgQueue, channel, isCustom, customNum)
+    -- PIPELINE RESOLUTION BLOCK: Short-circuits asynchronous engine if channel evaluates to LOCAL
+    if channel == "LOCAL" then
+        for _, rawMessage in ipairs(msgQueue) do
+            if HeroStats_Print then HeroStats_Print(rawMessage) end
+        end
+    else
+        if HeroStats_SendQueuedMessages then
+            HeroStats_SendQueuedMessages(msgQueue, channel, isCustom, customNum)
+        end
+    end
 end
 
--- FIXED v0.10.2: Upgraded to feed the new asynchronous packet management queue layout
+-- FIXED v1.0.0b1: Upgraded asynchronous deaths reporter with native channel validation and local print short-circuiting
 function HeroStats_Report_Deaths(playerData, channel, isCustom, customNum)
     if not playerData or not playerData.deathCauses then return end
+    
+    -- FIXED v1.0.0b1: Dynamic Channel Validation Interceptor routes into mock LOCAL state safely
+    if not HeroStats_IsChannelAccessible or not HeroStats_IsChannelAccessible(channel) then
+        channel = "LOCAL"
+        isCustom = false
+    end
     
     local msgQueue = {}
     local headerMsg = string.format("HeroStats - Fatal Damage Log for %s (%d deaths):", playerData.name or "Unknown", playerData.deaths or 0)
@@ -326,12 +507,27 @@ function HeroStats_Report_Deaths(playerData, channel, isCustom, customNum)
         table.insert(msgQueue, lineMsg)
     end
     
-    HeroStats_SendQueuedMessages(msgQueue, channel, isCustom, customNum)
+    -- PIPELINE RESOLUTION BLOCK: Short-circuits asynchronous engine if channel evaluates to LOCAL
+    if channel == "LOCAL" then
+        for _, rawMessage in ipairs(msgQueue) do
+            if HeroStats_Print then HeroStats_Print(rawMessage) end
+        end
+    else
+        if HeroStats_SendQueuedMessages then
+            HeroStats_SendQueuedMessages(msgQueue, channel, isCustom, customNum)
+        end
+    end
 end
 
--- FIXED v0.10.2: Upgraded to feed the new asynchronous packet management queue layout
+-- FIXED v1.0.0b1: Upgraded asynchronous resurrects reporter with native channel validation and local print short-circuiting
 function HeroStats_Report_Resurrects(playerData, channel, isCustom, customNum)
     if not playerData or not playerData.resRecipients then return end
+    
+    -- FIXED v1.0.0b1: Dynamic Channel Validation Interceptor routes into mock LOCAL state safely
+    if not HeroStats_IsChannelAccessible or not HeroStats_IsChannelAccessible(channel) then
+        channel = "LOCAL"
+        isCustom = false
+    end
     
     local msgQueue = {}
     local headerMsg = string.format("HeroStats - Resurrect Recipients for %s (%d casted):", playerData.name or "Unknown", playerData.resurrects or 0)
@@ -350,7 +546,98 @@ function HeroStats_Report_Resurrects(playerData, channel, isCustom, customNum)
         table.insert(msgQueue, lineMsg)
     end
     
-    HeroStats_SendQueuedMessages(msgQueue, channel, isCustom, customNum)
+    -- PIPELINE RESOLUTION BLOCK: Short-circuits asynchronous engine if channel evaluates to LOCAL
+    if channel == "LOCAL" then
+        for _, rawMessage in ipairs(msgQueue) do
+            if HeroStats_Print then HeroStats_Print(rawMessage) end
+        end
+    else
+        if HeroStats_SendQueuedMessages then
+            HeroStats_SendQueuedMessages(msgQueue, channel, isCustom, customNum)
+        end
+    end
+end
+
+-- FIXED v1.0.0b1: Global asynchronous reporter function for Personal Damage Records museum (Page 13)
+function HeroStats_Report_PersonalDamage(recordData, channel, isCustom, customNum)
+    if not recordData then return end
+    
+    -- FIXED v1.0.0b1: Dynamic Channel Validation Interceptor routes into mock LOCAL state safely
+    if not HeroStats_IsChannelAccessible or not HeroStats_IsChannelAccessible(channel) then
+        channel = "LOCAL"
+        isCustom = false
+    end
+    
+    local msgQueue = {}
+    local formattedAmt = FormatDotNumber and FormatDotNumber(recordData.amount) or recordData.amount
+    local critStr = recordData.isCrit and "Critical Strike" or "Normal Hit"
+    
+    -- Compile a beautiful, high-value milestone header layout
+    local headerMsg = string.format("HeroStats - Damage Record for %s: %s!", recordData.name or "Unknown", formattedAmt)
+    table.insert(msgQueue, headerMsg)
+    
+    -- Compile detailed statistical layout bullet points containing targets and isolated career casts
+    local line1 = string.format("- Max Value: %s (%s)", formattedAmt, critStr)
+    local line2 = string.format("- Target: %s", recordData.target or "Unknown")
+    local line3 = string.format("- Date: %s", recordData.date or "Unknown")
+    local line4 = string.format("- Total Casts: %d", recordData.casts or 0)
+    
+    table.insert(msgQueue, line1)
+    table.insert(msgQueue, line2)
+    table.insert(msgQueue, line3)
+    table.insert(msgQueue, line4)
+    
+    -- PIPELINE RESOLUTION BLOCK: Short-circuits asynchronous engine if channel evaluates to LOCAL
+    if channel == "LOCAL" then
+        for _, rawMessage in ipairs(msgQueue) do
+            if HeroStats_Print then HeroStats_Print(rawMessage) end
+        end
+    else
+        if HeroStats_SendQueuedMessages then
+            HeroStats_SendQueuedMessages(msgQueue, channel, isCustom, customNum)
+        end
+    end
+end
+
+-- FIXED v1.0.0b1: Global asynchronous reporter function for Personal Healing Records museum (Page 14)
+function HeroStats_Report_PersonalHealing(recordData, channel, isCustom, customNum)
+    if not recordData then return end
+    
+    -- FIXED v1.0.0b1: Dynamic Channel Validation Interceptor routes into mock LOCAL state safely
+    if not HeroStats_IsChannelAccessible or not HeroStats_IsChannelAccessible(channel) then
+        channel = "LOCAL"
+        isCustom = false
+    end
+    
+    local msgQueue = {}
+    local formattedAmt = FormatDotNumber and FormatDotNumber(recordData.amount) or recordData.amount
+    local critStr = recordData.isCrit and "Critical Heal" or "Normal Heal"
+    
+    -- Compile a beautiful, high-value milestone header layout
+    local headerMsg = string.format("HeroStats - Healing Record for %s: %s!", recordData.name or "Unknown", formattedAmt)
+    table.insert(msgQueue, headerMsg)
+    
+    -- Compile detailed statistical layout bullet points containing targets and isolated career casts
+    local line1 = string.format("- Max Value: %s (%s)", formattedAmt, critStr)
+    local line2 = string.format("- Target: %s", recordData.target or "Unknown")
+    local line3 = string.format("- Date: %s", recordData.date or "Unknown")
+    local line4 = string.format("- Total Casts: %d", recordData.casts or 0)
+    
+    table.insert(msgQueue, line1)
+    table.insert(msgQueue, line2)
+    table.insert(msgQueue, line3)
+    table.insert(msgQueue, line4)
+    
+    -- PIPELINE RESOLUTION BLOCK: Short-circuits asynchronous engine if channel evaluates to LOCAL
+    if channel == "LOCAL" then
+        for _, rawMessage in ipairs(msgQueue) do
+            if HeroStats_Print then HeroStats_Print(rawMessage) end
+        end
+    else
+        if HeroStats_SendQueuedMessages then
+            HeroStats_SendQueuedMessages(msgQueue, channel, isCustom, customNum)
+        end
+    end
 end
 
 -- end herostatscomm.lua
