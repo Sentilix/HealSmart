@@ -122,7 +122,7 @@ local cbRecLocal = CreateFrame("CheckButton", "HeroStats_RadioRecLocal", configP
 cbRecLocal:SetPoint("TOPLEFT", cbRecNone, "BOTTOMLEFT", 0, -8)
 local textLocal = _G[cbRecLocal:GetName() .. "Text"]
 if textLocal then
-    textLocal:SetText("Local Chat & Audio Pings Only")
+    textLocal:SetText("Local chat only")
     textLocal:SetTextColor(1.0, 1.0, 1.0, 1.0) -- Crisp White choice label text
 end
 
@@ -131,7 +131,7 @@ local cbRecScreen = CreateFrame("CheckButton", "HeroStats_RadioRecScreen", confi
 cbRecScreen:SetPoint("TOPLEFT", cbRecLocal, "BOTTOMLEFT", 0, -8)
 local textScreen = _G[cbRecScreen:GetName() .. "Text"]
 if textScreen then
-    textScreen:SetText("Heroic Screen Warning Alert Display")
+    textScreen:SetText("Screen Warning Alert Display")
     textScreen:SetTextColor(1.0, 1.0, 1.0, 1.0) -- Crisp White choice label text
 end
 

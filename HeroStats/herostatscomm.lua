@@ -2,6 +2,28 @@
 -- HeroStats - Communications & Reporting Engine (v0.10.2)
 -- ==========================================
 
+-- FIXED v1.0.0b1: File-level static constant cache optimizes memory by preventing table recreation on click
+local HEROSTATS_VIEW_DISPLAY_NAMES = {
+    ["DAMAGE_DONE"]         = "Damage Done",
+    ["HEALING"]             = "Healing Done",
+    ["HEALING_DONE"]        = "Healing Done",
+    ["DMG_CRIT"]            = "Damage Crits",
+    ["HEAL_CRIT"]           = "Healing Crits",
+    ["DAMAGE_TAKEN"]        = "Damage Taken",
+    ["DMG_TAKEN"]           = "Damage Taken",
+    ["OVERHEALING"]         = "Overhealing",
+    ["EFFICIENCY"]          = "Overhealing",
+    ["MANA_EFF"]            = "Heal per Mana",
+    ["MANA_GAINED"]         = "Mana Gained",
+    ["DISPELS"]             = "Dispels",
+    ["BUFFS"]               = "Applied Buffs",
+    ["DEATHS"]              = "Fatal Damage Log",
+    ["RESURRECTS"]          = "Resurrect Recipients",
+    ["PERSONAL_DMG_RECORDS"] = "Personal Damage Records",
+    ["PERSONAL_HEAL_RECORDS"] = "Personal Healing Records"
+}
+
+
 -- FIXED v1.0.0b1: Async chat queue engine handles all secure server channels via C_Timer to bypass Blizzard action blockades
 function HeroStats_SendQueuedMessages(msgList, channel, isCustom, customNum)
     if not msgList or #msgList == 0 then return end
@@ -643,59 +665,85 @@ function HeroStats_Report_PersonalHealing(recordData, channel, isCustom, customN
     end
 end
 
--- FIXED v1.0.0b1: Universal Asynchronous Page Overview Reporter explicitly handles target network channels
+
+-- FIXED v1.0.0b1: Universal Asynchronous Page Overview Reporter (Main Header Bar Engine)
 function HeroStats_Report_ActivePageOverview(masterSession, viewType, fightSeconds, targetChannel)
     if not masterSession then return end
 
-    -- FIXED v1.0.0b1: Dynamically reads the channel passed from the menu selection with a safe network lock
+    -- Dynamically reads the channel passed from the menu selection with a safe network lock
     local channel = targetChannel or "LOCAL"
     if not HeroStats_IsChannelAccessible or not HeroStats_IsChannelAccessible(channel) then
         channel = "LOCAL"
     end
 
-    -- Pull the correct data array block based on healing vs damage focus
-    local isHealingPage = (viewType == "HEALING" or viewType == "HEAL_CRIT" or viewType == "OVERHEALING" or viewType == "MANA_EFF" or viewType == "MANA_GAINED" or viewType == "DISPELS" or viewType == "BUFFS" or viewType == "DEATHS" or viewType == "RESURRECTS" or viewType == "PERSONAL_HEAL_RECORDS")
-    
+    -- Maps the core player data directly from the universal .healers raid array table
     local sourceData = nil
     if viewType == "PERSONAL_DMG_RECORDS" or viewType == "PERSONAL_HEAL_RECORDS" then
-        sourceData = masterSession
+        sourceData = masterSession -- Museums map records directly
     else
-        sourceData = isHealingPage and masterSession.healers or masterSession.damagers
+        -- COMBAT SESSIONS: Everything logs cleanly inside the master healers pool
+        sourceData = masterSession.healers
     end
 
-    if not sourceData then return end
-
-    local msgQueue = {}
-    local duration = fightSeconds or 1
-    
-    local headerTitle = string.format("HeroStats - Session Overview [%s]:", viewType)
-    if masterSession.name and type(masterSession.name) == "string" then
-        headerTitle = string.format("HeroStats - %s [%s]:", masterSession.name, viewType)
+    if not sourceData then 
+        return 
     end
-    table.insert(msgQueue, headerTitle)
 
-    -- Sort current players/records based on active view type requirements
+    local msgQueue = {}    
+    -- FIXED v1.0.0b1: Dynamically extracts the true fightDuration from database logs if fightSeconds lands as nil
+    local duration = masterSession.fightDuration or fightSeconds or 1
+    if duration <= 0 then duration = 1 end
+
+    -- Pack and prepare individual player blocks or records into sorting slots cleanly
     local sortedList = {}
-    for pName, pData in pairs(sourceData) do
-        local item = type(pData) == "table" and pData or { amount = pData }
-        item.name = item.name or pName
-        table.insert(sortedList, item)
+    for pNameOrGuid, pData in pairs(sourceData) do
+        if pData and type(pData) == "table" then
+            local item = {}
+            -- Inherit all player metrics dynamically
+            for k, v in pairs(pData) do item[k] = v end
+            -- Enforce clean fallback display strings for player names
+            item.name = item.name or pData.name or pNameOrGuid
+            
+            -- Enforces perfect structural alignment across ALL views using 'item' context exclusively
+            if viewType == "HEALING" or viewType == "HEALING_DONE" then 
+                item.sortAmount = item.effective or 0
+            elseif viewType == "HEAL_CRIT" then 
+                item.sortAmount = item.healCritPct or 0
+            elseif viewType == "OVERHEALING" or viewType == "EFFICIENCY" then 
+                item.sortAmount = item.percent or 100
+            elseif viewType == "MANA_EFF" then 
+                item.sortAmount = item.hpm or 0
+            elseif viewType == "MANA_GAINED" then 
+                item.sortAmount = item.manaGained or 0
+            elseif viewType == "DAMAGE_DONE" then 
+                item.sortAmount = item.damageDone or 0
+            elseif viewType == "DMG_CRIT" then 
+                item.sortAmount = item.dmgCritPct or 0
+            elseif viewType == "DAMAGE_TAKEN" or viewType == "DMG_TAKEN" then 
+                item.sortAmount = item.damageTaken or 0
+            elseif viewType == "DISPELS" then 
+                item.sortAmount = item.dispels or 0
+            elseif viewType == "BUFFS" then 
+                item.sortAmount = item.buffs or 0
+            elseif viewType == "DEATHS" then 
+                item.sortAmount = item.deaths or 0
+            elseif viewType == "RESURRECTS" then 
+                item.sortAmount = item.resurrects or 0
+            end
+
+            table.insert(sortedList, item)
+        end
     end
 
-    -- FIXED v1.0.0b1: Sorter uses clean 'a' and 'b' parameters exclusively to prevent global nil crashes
+    -- EMPTY PAGE SHORT-CIRCUIT: If the sorted list contains zero data, exit silently
+    if #sortedList == 0 then
+        return 
+    end
+
+    -- Sorter maps cleanly onto descending ranks
     table.sort(sortedList, function(a, b)
-        if viewType == "HEALING" then return (a.effective or 0) > (b.effective or 0)
-        elseif viewType == "HEAL_CRIT" then return (a.healCritPct or 0) > (b.healCritPct or 0)
-        elseif viewType == "OVERHEALING" then return (a.percent or 0) < (b.percent or 0)
-        elseif viewType == "MANA_EFF" then return (a.hpm or 0) > (b.hpm or 0)
-        elseif viewType == "MANA_GAINED" then return (a.manaGained or 0) > (b.manaGained or 0)
-        elseif viewType == "DAMAGE_DONE" then return (a.damageDone or 0) > (b.damageDone or 0)
-        elseif viewType == "DMG_CRIT" then return (a.dmgCritPct or 0) > (b.dmgCritPct or 0)
-        elseif viewType == "DAMAGE_TAKEN" then return (a.damageTaken or 0) > (b.damageTaken or 0)
-        elseif viewType == "DISPELS" then return (a.dispels or 0) > (b.dispels or 0)
-        elseif viewType == "BUFFS" then return (a.buffs or 0) > (b.buffs or 0)
-        elseif viewType == "DEATHS" then return (a.deaths or 0) > (b.deaths or 0)
-        elseif viewType == "RESURRECTS" then return (a.resurrects or 0) > (b.resurrects or 0)
+        if viewType == "OVERHEALING" or viewType == "EFFICIENCY" then
+            return (a.sortAmount or 100) < (b.sortAmount or 100) -- Lower percentage = higher efficiency ranking
         elseif viewType == "PERSONAL_DMG_RECORDS" or viewType == "PERSONAL_HEAL_RECORDS" then
             local aNormal = (a.normal and type(a.normal) == "table") and (a.normal.amount or 0) or 0
             local aCrit = (a.crit and type(a.crit) == "table") and (a.crit.amount or 0) or 0
@@ -706,21 +754,33 @@ function HeroStats_Report_ActivePageOverview(masterSession, viewType, fightSecon
             local bMax = math.max(bNormal, bCrit)
             
             return aMax > bMax
+        else
+            return (a.sortAmount or 0) > (b.sortAmount or 0)
         end
-        return false
     end)
 
-    -- Compile top 5 report data strings inside loop using the validated 'data' pointer
+    -- Headline is dynamically compiled and injected ONLY when data is guaranteed to exist
+    local cleanViewName = HEROSTATS_VIEW_DISPLAY_NAMES[viewType] or viewType
+    local fightIdStr = masterSession.id and (" #" .. tostring(masterSession.id)) or ""
+    local fightNameStr = (masterSession.name and masterSession.name ~= "") and (" [" .. tostring(masterSession.name) .. "]") or ""
+    local headerTitle = string.format("HeroStats%s%s - %s", fightIdStr, fightNameStr, cleanViewName)
+    
+    if viewType == "PERSONAL_DMG_RECORDS" or viewType == "PERSONAL_HEAL_RECORDS" then
+        headerTitle = string.format("HeroStats - Lifetime Museum - %s", cleanViewName)
+    end
+    table.insert(msgQueue, headerTitle)
+
+    -- Compile top 5 report data strings inside loop using the validated data pointer
     for i = 1, math.min(5, #sortedList) do
         local data = sortedList[i]
         local valueText = "0"
 
-        if viewType == "HEALING" then
+        if viewType == "HEALING" or viewType == "HEALING_DONE" then
             local formattedAmt = FormatDotNumber and FormatDotNumber(data.effective) or data.effective
-            valueText = string.format("%s (%.0f HPS)", formattedAmt, data.effective / duration)
-        elseif viewType == "HEAL_CRIT" or viewType == "DMG_CRIT" then
-            valueText = string.format("%.1f%% Crit", data.healCritPct or data.dmgCritPct or 0)
-        elseif viewType == "OVERHEALING" then
+            valueText = string.format("%s (%.0f HPS)", formattedAmt, (data.effective or 0) / duration)
+        elseif viewType == "HEAL_CRIT" then
+            valueText = string.format("%.1f%% Crit", data.healCritPct or 0)
+        elseif viewType == "OVERHEALING" or viewType == "EFFICIENCY" then
             valueText = string.format("%.1f%% Efficiency", data.percent or 0)
         elseif viewType == "MANA_EFF" then
             valueText = string.format("%.1f HPM", data.hpm or 0)
@@ -729,16 +789,17 @@ function HeroStats_Report_ActivePageOverview(masterSession, viewType, fightSecon
             valueText = string.format("%s mana", formattedAmt)
         elseif viewType == "DAMAGE_DONE" then
             local formattedAmt = FormatDotNumber and FormatDotNumber(data.damageDone) or data.damageDone
-            valueText = string.format("%s (%.0f DPS)", formattedAmt, data.damageDone / duration)
-        elseif viewType == "DAMAGE_TAKEN" then
+            valueText = string.format("%s (%.0f DPS)", formattedAmt, (data.damageDone or 0) / duration)
+        elseif viewType == "DMG_CRIT" then
+            valueText = string.format("%.1f%% Crit", data.dmgCritPct or 0)
+        elseif viewType == "DAMAGE_TAKEN" or viewType == "DMG_TAKEN" then
             local formattedAmt = FormatDotNumber and FormatDotNumber(data.damageTaken) or data.damageTaken
-            valueText = string.format("%s (%.0f DTPS)", formattedAmt, data.damageTaken / duration)
+            valueText = string.format("%s (%.0f DTPS)", formattedAmt, (data.damageTaken or 0) / duration)
         elseif viewType == "DISPELS" then valueText = string.format("%d Dispels", data.dispels or 0)
         elseif viewType == "BUFFS" then valueText = string.format("%d Buffs", data.buffs or 0)
         elseif viewType == "DEATHS" then valueText = string.format("%d Deaths", data.deaths or 0)
         elseif viewType == "RESURRECTS" then valueText = string.format("%d Resses", data.resurrects or 0)
         elseif viewType == "PERSONAL_DMG_RECORDS" or viewType == "PERSONAL_HEAL_RECORDS" then
-            -- FIXED v1.0.0b1: Core element uses data loop pointer flawlessly with a guaranteed fallback string
             local maxNormal = (data.normal and type(data.normal) == "table") and (data.normal.amount or 0) or 0
             local maxCrit = (data.crit and type(data.crit) == "table") and (data.crit.amount or 0) or 0
             local maxLifetimeRecord = math.max(maxNormal, maxCrit)
@@ -748,7 +809,7 @@ function HeroStats_Report_ActivePageOverview(masterSession, viewType, fightSecon
                 local finalAmt = FormatDotNumber and FormatDotNumber(maxLifetimeRecord) or maxLifetimeRecord
                 valueText = string.format("%s (%s)", tostring(finalAmt), suffixStr)
             else
-                valueText = "No Record Established"
+                valueText = "No records recorded"
             end
         end
 

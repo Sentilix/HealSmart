@@ -284,7 +284,8 @@ shoutButton:SetScript("OnClick", function(self)
         end
     end
 
-    local currentFightDuration = fightSeconds or 1
+    -- FIXED v1.0.0b1: Forcing this to nil triggers the comm layer to read the true fightDuration from database logs
+    local currentFightDuration = nil
 
     -- Allocate or fetch the dedicated Blizzard dropdown frame template asset securely
     local menuFrame = HeroStatsHeaderReportMenuFrame or CreateFrame("Frame", "HeroStatsHeaderReportMenuFrame", UIParent, "UIDropdownMenuTemplate")

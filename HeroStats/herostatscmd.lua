@@ -68,13 +68,21 @@ local function HeroStats_SlashCommandHandler(msg)
         
     -- Direct configuration shortcut command utilizing the dynamic numeric ID bridge
     elseif cmd == "config" or cmd == "options" then
-        if Settings and Settings.OpenToCategory and HeroStats_ConfigCategoryID then
-            -- Modern Era API pathing utilizing the verified internal number ID
-            Settings.OpenToCategory(HeroStats_ConfigCategoryID)
+        -- FIXED v1.0.0b1: Anti-Taint Combat Shield prevents protected API crashes during fights
+        if InCombatLockdown and InCombatLockdown() then
+            if HeroStats_Print then
+                HeroStats_Print("|cffff4d4dThe configuration screen cannot be opened in combat.")
+            end
         else
-            -- Legacy engine fallback pathing
-            InterfaceOptionsFrame_OpenToCategory("HeroStats")
+            if Settings and Settings.OpenToCategory and HeroStats_ConfigCategoryID then
+                -- Modern Era API pathing utilizing the verified internal number ID
+                Settings.OpenToCategory(HeroStats_ConfigCategoryID)
+            else
+                -- Legacy engine fallback pathing
+                InterfaceOptionsFrame_OpenToCategory("HeroStats")
+            end
         end
+
         
     elseif cmd == "version" then
         HeroStats_Print("Querying group members for installed addon versions...")
