@@ -4,19 +4,20 @@
 
 -- Unified 1-Based Data-Driven Page Routing Framework
 HeroStats_Pages = {
-    [1]  = { name = "FRONTPAGE",     title = "1. HeroStats" },
-    [2]  = { name = "DAMAGE_DONE",   title = "2. Damage Done" },
-    [3]  = { name = "DMG_CRIT",      title = "3. Damage Crits" },
-    [4]  = { name = "DAMAGE_TAKEN",  title = "4. Damage Taken" },
-    [5]  = { name = "HEALING",       title = "5. Healing Done" },
-    [6]  = { name = "HEAL_CRIT",      title = "6. Healing Crits" },
-    [7]  = { name = "OVERHEALING",   title = "7. Overhealing" },
-    [8]  = { name = "MANA_EFF",      title = "8. Mana Efficiency" },
-    [9]  = { name = "MANA_GAINED",   title = "9. Mana Gained" },
-    [10] = { name = "DISPELS",       title = "10. Dispels Done" },
-    [11] = { name = "BUFFS",         title = "11. Buffs" },
-    [12] = { name = "DEATHS",        title = "12. Deaths" },
-    [13] = { name = "RESURRECTS",    title = "13. Resurrects Cast" }
+    [1]  = { name = "DAMAGE_DONE",   title = "1. Damage Done" },
+    [2]  = { name = "DMG_CRIT",      title = "2. Damage Crits" },
+    [3]  = { name = "DAMAGE_TAKEN",  title = "3. Damage Taken" },
+    [4]  = { name = "HEALING",       title = "4. Healing Done" },
+    [5]  = { name = "HEAL_CRIT",     title = "5. Healing Crits" },
+    [6]  = { name = "OVERHEALING",   title = "6. Overhealing" },
+    [7]  = { name = "MANA_EFF",      title = "7. Mana Efficiency" },
+    [8]  = { name = "MANA_GAINED",   title = "8. Mana Gained" },
+    [9]  = { name = "DISPELS",       title = "9. Dispels Done" },
+    [10] = { name = "BUFFS",         title = "10. Buffs" },
+    [11] = { name = "DEATHS",        title = "11. Deaths" },
+    [12] = { name = "RESURRECTS",    title = "12. Resurrects Cast" },
+    [13] = { name = "PERSONAL_DMG_RECORDS",  title = "13. Personal Damage Records" },
+    [14] = { name = "PERSONAL_HEAL_RECORDS", title = "14. Personal Healing Records" }
 }
 
 HeroStats_SpellCostDB = {

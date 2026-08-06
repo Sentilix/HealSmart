@@ -85,6 +85,22 @@ timerFrame:SetScript("OnEvent", function(self, event)
     end
 end)
 
+function HeroStats_DumpTable(tbl, indent)
+    if not tbl then print("HeroStats Dump: Table is nil") return end
+    if type(tbl) ~= "table" then print("HeroStats Dump: Expected table, got " .. type(tbl)) return end
+    
+    indent = indent or ""
+    for k, v in pairs(tbl) do
+        local keyStr = tostring(k)
+        if type(v) == "table" then
+            print(indent .. "[" .. keyStr .. "] => (table):")
+            HeroStats_DumpTable(v, indent .. "  ") -- Recursive call for sub-tables
+        else
+            print(indent .. "[" .. keyStr .. "] => " .. tostring(v))
+        end
+    end
+end
+
 -- Multi-Session Profile Factory: Securely fetches or creates data rows within any sub-table target
 function HeroStats_GetOrCreateProfile(dataTable, guid, name, classToken)
     if not dataTable then return nil end
@@ -195,21 +211,6 @@ function coreFrame.RefreshStats()
     local pageName = pageRecord.name
     local viewTitle = pageRecord.title
 
-    -- FRONTPAGE HANDLING: Safely short-circuit if on the welcome screen
-    if pageName == "FRONTPAGE" then
-        if uiBars then
-            for _, bar in ipairs(uiBars) do
-                if bar and bar.Hide then bar:Hide() end
-            end
-        end
-
-        local welcomeMessage = "Welcome to HeroStats!\n\nUse the < and > arrows in the top right to switch statistics screens.\n\nData tracks automatically as soon as combat starts."
-        if HeroStats_RenderTextMessage then
-            HeroStats_RenderTextMessage(viewTitle or "HeroStats", welcomeMessage)
-        end
-        return
-    end
-
     -- Clear previous fight cache cleanly
     table.wipe(sortedHealers)
     
@@ -252,11 +253,15 @@ function coreFrame.RefreshStats()
         end
     end
 
-    -- FIXED v0.10.1: Build your clean local viewTitle right here once
     local baseTitle = pageRecord and pageRecord.title or "HeroStats"
-    local viewTitle = string.format("%s (%s)", baseTitle, sessionLabel)
+    local viewTitle = ""
 
-    -- NEW v0.9.0: Dynamic Historical Time Calibration Pipeline
+    if pageName == "PERSONAL_DMG_RECORDS" or pageName == "PERSONAL_HEAL_RECORDS" then
+        viewTitle = baseTitle
+    else
+        viewTitle = string.format("%s (%s)", baseTitle, sessionLabel)
+    end
+
     local activeFightSeconds = HeroStats_CurrentFightDuration or 0 -- Default fallback
     
     if activeViewID == -1 then
@@ -386,6 +391,30 @@ function coreFrame.RefreshStats()
                         if MANA_CLASSES[data.class] and (data.manaGained or 0) > 0 then 
                             shouldInclude = true 
                         end
+                    elseif pageName == "PERSONAL_DMG_RECORDS" then
+                        if HeroStatsSettings and HeroStatsSettings.personalDamageRecords then
+                            -- FIXED v1.0.0b1: Expanded validation allows profiles to load safely based on career casts or ticks
+                            for _, rec in pairs(HeroStatsSettings.personalDamageRecords) do
+                                local hasRecordAmount = (rec.normal and (rec.normal.amount or 0) > 0) or (rec.crit and (rec.crit.amount or 0) > 0)
+                                local hasActivityCounters = (rec.casts and rec.casts > 0) or (rec.ticks and rec.ticks > 0)
+                                if hasRecordAmount or hasActivityCounters then
+                                    shouldInclude = true
+                                    break
+                                end
+                            end
+                        end
+                    elseif pageName == "PERSONAL_HEAL_RECORDS" then
+                        if HeroStatsSettings and HeroStatsSettings.personalHealingRecords then
+                            -- FIXED v1.0.0b1: Expanded validation allows profiles to load safely based on career casts or ticks
+                            for _, rec in pairs(HeroStatsSettings.personalHealingRecords) do
+                                local hasRecordAmount = (rec.normal and (rec.normal.amount or 0) > 0) or (rec.crit and (rec.crit.amount or 0) > 0)
+                                local hasActivityCounters = (rec.casts and rec.casts > 0) or (rec.ticks and rec.ticks > 0)                                
+                                if hasRecordAmount or hasActivityCounters then
+                                    shouldInclude = true
+                                    break
+                                end
+                            end
+                        end
                     end
 
                     if shouldInclude then
@@ -403,7 +432,10 @@ function coreFrame.RefreshStats()
 
     -- Render blank state if no dataset rows found (v0.8.0 Data-Driven Secured)
     if #sortedHealers == 0 then
-        local pageTitle = baseTitle .. " (" .. sessionLabel .. ")"
+        local pageTitle = baseTitle;
+        if not (pageName == "PERSONAL_DMG_RECORDS" or pageName == "PERSONAL_HEAL_RECORDS") then
+            pageTitle = pageTitle .. " (" .. sessionLabel .. ")"
+        end
         if HeroStats_RenderTextMessage then HeroStats_RenderTextMessage(pageTitle, "") end
         return
     end
@@ -458,6 +490,89 @@ function coreFrame.RefreshStats()
     elseif pageName == "RESURRECTS" then
         table.sort(sortedHealers, function(a, b) return (a.resurrects == b.resurrects) and (a.name < b.name) or (a.resurrects > b.resurrects) end)
         if HeroStats_RenderRaidBars then HeroStats_RenderRaidBars(sortedHealers, topRessValue, "RESURRECTS", 0, viewTitle) end
+
+    elseif pageName == "PERSONAL_DMG_RECORDS" then
+        local recordList = {}
+        local maxRecordValue = 1
+        
+        if HeroStatsSettings and HeroStatsSettings.personalDamageRecords then
+            for spellName, rec in pairs(HeroStatsSettings.personalDamageRecords) do
+                local totalCasts = rec.casts or 0
+                local critCasts = rec.critCasts or 0
+                local normalCasts = totalCasts - critCasts
+                if normalCasts < 0 then normalCasts = 0 end -- Secure mathematical safeguard
+                
+                if rec.crit and (rec.crit.amount or 0) > 0 then
+                    table.insert(recordList, {
+                        name = spellName, amount = rec.crit.amount, isCrit = true,
+                        target = rec.crit.target or "Unknown", date = rec.crit.date or "Unknown",
+                        casts = critCasts, -- FIXED v1.0.0a3: Passes isolated critical strike count
+                        class = playerClassFilename or "UNKNOWN",
+                        ticks = rec.ticks or 0,       -- FIXED v1.0.0b1: Carries your lifetime DoT ticks safely into the bar elements!
+                        critCasts = rec.critCasts or 0, -- FIXED v1.0.0b1: Carries your lifetime damage crits count safely too!
+                    })
+                    if rec.crit.amount > maxRecordValue then maxRecordValue = rec.crit.amount end
+                end
+                -- FIXED v1.0.0b1: Normal Record Ingress Shield carries ticks and critCasts into the dataset safely
+                if rec.normal then
+                    table.insert(recordList, {
+                        name = spellName, 
+                        amount = rec.normal.amount or 0, 
+                        isCrit = false,
+                        target = rec.normal.target or "Unknown", 
+                        date = rec.normal.date or "Unknown",
+                        casts = normalCasts,
+                        ticks = rec.ticks or 0,       -- FIXED v1.0.0b1: Carries your lifetime DoT ticks safely into the bar elements!
+                        critCasts = rec.critCasts or 0, -- FIXED v1.0.0b1: Carries your lifetime damage crits count safely too!
+                        class = playerClassFilename or "UNKNOWN"
+                    })
+                    if rec.normal.amount and rec.normal.amount > maxRecordValue then 
+                        maxRecordValue = rec.normal.amount 
+                    end
+                end
+            end
+            table.sort(recordList, function(a, b) return a.amount > b.amount end)
+        end
+        if HeroStats_RenderRaidBars then HeroStats_RenderRaidBars(recordList, maxRecordValue, "PERSONAL_DMG_RECORDS", 0, viewTitle) end
+
+    elseif pageName == "PERSONAL_HEAL_RECORDS" then
+        local recordList = {}
+        local maxRecordValue = 1
+        
+        if HeroStatsSettings and HeroStatsSettings.personalHealingRecords then
+            for spellName, rec in pairs(HeroStatsSettings.personalHealingRecords) do
+                local totalCasts = rec.casts or 0
+                local critCasts = rec.critCasts or 0
+                local normalCasts = totalCasts - critCasts
+                if normalCasts < 0 then normalCasts = 0 end
+                
+                if rec.crit and (rec.crit.amount or 0) > 0 then
+                    table.insert(recordList, {
+                        name = spellName, amount = rec.crit.amount, isCrit = true,
+                        target = rec.crit.target or "Unknown", date = rec.crit.date or "Unknown",
+                        casts = critCasts,
+                        ticks = rec.ticks or 0,
+                        critCasts = rec.critCasts or 0,
+                        class = playerClassFilename or "UNKNOWN"
+                    })
+                    if rec.crit.amount > maxRecordValue then maxRecordValue = rec.crit.amount end
+                end
+                if rec.normal then
+                    table.insert(recordList, {
+                        name = spellName, amount = rec.normal.amount, isCrit = false,
+                        target = rec.normal.target or "Unknown", date = rec.normal.date or "Unknown",
+                        casts = normalCasts,
+                        ticks = rec.ticks or 0,
+                        critCasts = rec.critCasts or 0,
+                        class = playerClassFilename or "UNKNOWN"
+                    })
+                    if rec.normal.amount > maxRecordValue then maxRecordValue = rec.normal.amount end
+                end
+
+            end
+            table.sort(recordList, function(a, b) return a.amount > b.amount end)
+        end
+        if HeroStats_RenderRaidBars then HeroStats_RenderRaidBars(recordList, maxRecordValue, "PERSONAL_HEAL_RECORDS", 0, viewTitle) end
     end
 end
 
@@ -513,6 +628,56 @@ local function GetLiveSpellManaCost(spellID)
     return 0
 end
 
+-- FIXED v1.0.0a3: Symmetrical Notification Engine with Solo-Group Fallback Protection
+function HeroStats_TriggerRecordNotification(spellName, targetName, amountValue, isCrit, isHealing)
+    if not HeroStatsSettings then return end
+    
+    local notifyMode = HeroStatsSettings.recordNotifyMode or 2 -- Fallback cleanly to Local Chat (Mode 2)
+    
+    -- MODE 1 SHIELD: If set to 1 (Silent Mode), we completely bypass the pipeline instantly
+    if notifyMode > 1 then
+        local actionStr = isHealing and "healed" or "hit"
+        local typeStr = isHealing and "Healing" or "Damage"
+        local critStr = isCrit and "Crit" or "Normal"
+        local formattedAmt = FormatDotNumber and FormatDotNumber(amountValue) or amountValue
+        
+        local msg = string.format("New %s %s Record! %s %s %s for %s!", 
+            critStr, typeStr, spellName, actionStr, targetName or "Unknown", formattedAmt)
+        
+        -- INTERNET SHIELD: Force Mode 4 to morph into Mode 3 fallback if player is entirely solo
+        if notifyMode == 4 and not IsInGroup() then
+            notifyMode = 3
+        end
+        
+        -- MODE 2: Traditional Local Chat Output & Audio Pings Only
+        if notifyMode == 2 then
+            if isCrit then 
+                PlaySound(6674) 
+                if HeroStats_Print then HeroStats_Print("|cffffd700" .. msg .. "|r") end
+            else 
+                PlaySound(1204) 
+                if HeroStats_Print then HeroStats_Print("|cffb3b3b3" .. msg .. "|r") end
+            end
+            
+        -- MODE 3: Heroic Screen Warning Alert Display Frame (Fading RaidNotice)
+        elseif notifyMode == 3 then
+            if RaidNotice_AddMessage and RaidWarningFrame then
+                local colorTable = isCrit and { r = 1.0, g = 0.82, b = 0.0 } or { r = 0.75, g = 0.75, b = 0.75 }
+                local fullScreenMsg = "HeroStats: " .. msg
+                RaidNotice_AddMessage(RaidWarningFrame, fullScreenMsg, colorTable)
+            end
+            
+        -- MODE 4: Group Announcement Instance Router (Guaranteed to be in a group here)
+        elseif notifyMode == 4 then
+            if isCrit then PlaySound(6674) else PlaySound(1204) end            
+            -- Prefixes your clean addon brand identifier for group blære-chat text
+            local groupMsg = "HeroStats: " .. msg
+            local channel = IsInRaid() and "RAID" or "PARTY"
+            SendChatMessage(groupMsg, channel)
+        end
+    end
+end
+
 -- =========================================================================
 -- --- HeroStats - Core Engine (v0.8.0) - OnCombatLogEvent Pipeline ---
 -- =========================================================================
@@ -561,19 +726,55 @@ local function OnEvent_SPELL_CAST_SUCCESS(eventType, sourceGUID, sourceName, sou
                 end
                 healer.spellMana[fullSpellName].manaUsed = healer.spellMana[fullSpellName].manaUsed + actualCost
 
-                if HeroStatsSettings and HeroStatsSettings.overallData then
-                    local overallHealer = HeroStats_GetOrCreateProfile(HeroStatsSettings.overallData, sourceGUID, cleanSourceName, healerClass)
-                    
-                    -- FIXED: Overall master safely locked inside the healing-filter wall too!
-                    overallHealer.manaUsed = (overallHealer.manaUsed or 0) + actualCost
+                -- FIXED v1.0.0b1: MUSEUM CAREER CASTS INCREMENT ENGINE (Captures the physical cast instantly!)
+                if HeroStatsSettings and HeroStatsSettings.personalHealingRecords then
+                    -- FIXED v1.0.0b1: Strip ranks from the manual cast string BEFORE creating the database entry!
+                    local cleanRecordSpellName = string.gsub(fullSpellName, "%s*%(Rank%s+%d+%)", "")
+                    cleanRecordSpellName = string.trim and string.trim(cleanRecordSpellName) or cleanRecordSpellName:match("^%s*(.-)%s*$")
 
-                    if not overallHealer.spellMana then overallHealer.spellMana = {} end
-                    if not overallHealer.spellMana[fullSpellName] then
-                        overallHealer.spellMana[fullSpellName] = { manaUsed = 0, effective = 0 }
+                    local museumTable = HeroStatsSettings.personalHealingRecords
+                    
+                    if not museumTable[cleanRecordSpellName] then
+                        museumTable[cleanRecordSpellName] = {
+                            name = cleanRecordSpellName,
+                            casts = 0,
+                            critCasts = 0,
+                            ticks = 0,
+                            normal = { amount = 0, target = "None", date = "None" },
+                            crit = { amount = 0, target = "None", date = "None" }
+                        }
                     end
-                    overallHealer.spellMana[fullSpellName].manaUsed = overallHealer.spellMana[fullSpellName].manaUsed + actualCost
+                    
+                    museumTable[cleanRecordSpellName].casts = (museumTable[cleanRecordSpellName].casts or 0) + 1
                 end
             end
+        end
+
+        -- FIXED v1.0.0b1: INDEPENDENT OFFENSIVE CAREER CASTS SHIELD FOR LIFE-MUSEUM
+        local isKnownHealOrBuff = SPELL_CLASS_CACHE[spellName] or BUFF_WATCH_LIST[spellName] or (spellName == "Power Word: Shield")
+        
+        -- EXCLUSIVE DAMAGE INTERCEPTOR: Opens ONLY for true offensive player casts
+        if sourceGUID == playerGUID and not isHealingSpell and not isKnownHealOrBuff and HeroStatsSettings then
+            -- Clean and strip ranks seamlessly from the manual damage cast string before writing to DB
+            local cleanRecordSpellName = string.gsub(fullSpellName, "%s*%(Rank%s+%d+%)", "")
+            cleanRecordSpellName = string.trim and string.trim(cleanRecordSpellName) or cleanRecordSpellName:match("^%s*(.-)%s*$")
+
+            local dmgMuseum = HeroStatsSettings.personalDamageRecords
+            if not dmgMuseum then HeroStatsSettings.personalDamageRecords = {} dmgMuseum = HeroStatsSettings.personalDamageRecords end
+            
+            if not dmgMuseum[cleanRecordSpellName] then
+                dmgMuseum[cleanRecordSpellName] = {
+                    name = cleanRecordSpellName,
+                    casts = 0,
+                    critCasts = 0,
+                    ticks = 0,
+                    normal = { amount = 0, target = "None", date = "None" },
+                    crit = { amount = 0, target = "None", date = "None" }
+                }
+            end
+            
+            -- Increments your offensive career casts counter instantly under total isolation!
+            dmgMuseum[cleanRecordSpellName].casts = (dmgMuseum[cleanRecordSpellName].casts or 0) + 1
         end
 
         -- Run buff watchlist check
@@ -590,6 +791,7 @@ local function OnEvent_SPELL_CAST_SUCCESS(eventType, sourceGUID, sourceName, sou
                 overallHealer.spellBuffs[spellName] = (overallHealer.spellBuffs[spellName] or 0) + 1
             end
         end
+
         coreFrame.RefreshStats()
     end
 end;
@@ -651,12 +853,67 @@ local function OnEvent_DAMAGE(eventType, sourceGUID, sourceName, sourceFlags, de
             profile.damageDone = profile.damageDone + amount
                 
             -- FIXED v0.10.0: Extract the unique critical strike flags based on hit types
-            -- Melee swing damage flags reside on argument 18, spell variants on argument 21
             local isCrit = false
             if eventType == "SWING_DAMAGE" then
                 isCrit = select(18, CombatLogGetCurrentEventInfo())
             else
                 isCrit = select(21, CombatLogGetCurrentEventInfo())
+            end
+
+            -- FIXED v1.0.0b1: PERSONAL DAMAGE RECORD ENGINE (Advanced Rank-Stripper & DoT Isolation Symmetri)
+            if sourceGUID == playerGUID and fullSpellName then
+                -- FIXED v1.0.0b1: Advanced Rank-Stripper eliminates (Rank X) string patterns while preserving (DoT) tokens perfectly
+                local cleanRecordSpellName = string.gsub(fullSpellName, "%s*%(Rank%s+%d+%)", "")
+                
+                -- Enforces a razor-sharp trim to wipe out any stray whitespace artifacts safely
+                cleanRecordSpellName = string.trim and string.trim(cleanRecordSpellName) or cleanRecordSpellName:match("^%s*(.-)%s*$")
+
+                if not HeroStatsSettings.personalDamageRecords then HeroStatsSettings.personalDamageRecords = {} end
+                if not HeroStatsSettings.personalDamageRecords[cleanRecordSpellName] then
+                    HeroStatsSettings.personalDamageRecords[cleanRecordSpellName] = {
+                        name = cleanRecordSpellName, -- Safely embeds the un-ranked master name string (with or without DoT)
+                        casts = 0,
+                        critCasts = 0, 
+                        ticks = 0, -- Dedicated field isolates and tracks lifetime periodic ticks flawlessly
+                        normal = { amount = 0, target = "None", date = "None" },
+                        crit = { amount = 0, target = "None", date = "None" }
+                    }
+                end
+
+                local rec = HeroStatsSettings.personalDamageRecords[cleanRecordSpellName]
+                
+                -- FIXED v1.0.0b1: Ticks counter is incremented EXCLUSIVELY under periodic events from this engine
+                local isPeriodicTick = (eventType == "SPELL_PERIODIC_DAMAGE")
+                if isPeriodicTick then
+                    rec.ticks = (rec.ticks or 0) + 1
+                end
+            
+                local isNewRecord = false
+                local isCritRecord = false
+                local currentAmount = amount or 0
+
+                if isCrit then
+                    rec.critCasts = (rec.critCasts or 0) + 1 -- Increment your single extra crit field!
+                
+                    if currentAmount > (rec.crit.amount or 0) then
+                        rec.crit.amount = currentAmount
+                        rec.crit.target = destName or "Unknown"
+                        rec.crit.date = date("%d/%m/%Y")
+                        isNewRecord = true
+                        isCritRecord = true
+                    end
+                else
+                    if currentAmount > (rec.normal.amount or 0) then
+                        rec.normal.amount = currentAmount
+                        rec.normal.target = destName or "Unknown"
+                        rec.normal.date = date("%d/%m/%Y")
+                        isNewRecord = true
+                    end
+                end
+
+                if isNewRecord then
+                    HeroStats_TriggerRecordNotification(cleanRecordSpellName, destName, currentAmount, isCritRecord, true) -- Passes true for damage aspect
+                end
             end
 
             -- Accumulate master totals for your new Damage Crits tab layout
@@ -772,7 +1029,7 @@ local function OnEvent_DAMAGE(eventType, sourceGUID, sourceName, sourceFlags, de
     end;
 end;
 
---  DIRECT HEALS & HOTS (v0.10.0 - Healing Crits Tracking Added)
+--  DIRECT HEALS & HOTS (v1.0.0b1 - Upgraded HoT Name-Grafting & Museum Cast Shields)
 local function OnEvent_HEAL(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags)
     local spellID, spellName = select(12, CombatLogGetCurrentEventInfo())
     local _, _, _, amount, overheal = select(12, CombatLogGetCurrentEventInfo())
@@ -792,7 +1049,7 @@ local function OnEvent_HEAL(eventType, sourceGUID, sourceName, sourceFlags, dest
         local classFilename = groupRosterCache[cleanName] or SPELL_CLASS_CACHE[spellName]
 
         if classFilename then
-            -- FIXED v0.10.0: Extract the healing critical strike boolean flag from argument 18
+            -- Extract the healing critical strike boolean flag from argument 18
             local isHealCrit = select(18, CombatLogGetCurrentEventInfo())
 
             local healer = HeroStats_GetOrCreateProfile(activeHealers, sourceGUID, cleanName, classFilename)
@@ -806,7 +1063,7 @@ local function OnEvent_HEAL(eventType, sourceGUID, sourceName, sourceFlags, dest
                 healer.critHealAmt = (healer.critHealAmt or 0) + effective
             end
 
-            -- Dynamic Rank Compiler (e.g. "Flash Heal (Rank 4)")
+            -- 1. FIRST: Execute your existing Dynamic Rank Compiler to build the master token string
             local fullSpellName = spellName
             if spellID and spellName and C_Spell and C_Spell.GetSpellSubtext then
                 local rankText = C_Spell.GetSpellSubtext(spellID)
@@ -815,6 +1072,72 @@ local function OnEvent_HEAL(eventType, sourceGUID, sourceName, sourceFlags, dest
                 end
             end
 
+            -- FIXED v1.0.0b1: INTERCEPTOR INGRESS GRAFTING
+            -- Appends the HoT marker suffix inside the event stream if it is a periodic tick
+            local isPeriodicTick = (eventType == "SPELL_PERIODIC_HEAL")
+            if isPeriodicTick then
+                fullSpellName = fullSpellName .. " (HoT)"
+            end
+
+            -- 2. SECOND: Run your isolated Personal Healing Record engine using your freshly built fullSpellName!
+            if sourceGUID == playerGUID and fullSpellName then
+                -- FIXED v1.0.0b1: Advanced Rank-Stripper eliminates (Rank X) string patterns while preserving tokens perfectly
+                local cleanRecordSpellName = string.gsub(fullSpellName, "%s*%(Rank%s+%d+%)", "")
+                
+                -- Enforces a razor-sharp trim to wipe out any stray whitespace artifacts safely
+                cleanRecordSpellName = string.trim and string.trim(cleanRecordSpellName) or cleanRecordSpellName:match("^%s*(.-)%s*$")
+
+                -- REMOVED: "if isPeriodicTick then cleanRecordSpellName = cleanRecordSpellName .. ' (HoT)' end"
+                -- This removal permanently kills the double (HoT) (HoT) artifact!
+
+                if not HeroStatsSettings.personalHealingRecords then HeroStatsSettings.personalHealingRecords = {} end
+                if not HeroStatsSettings.personalHealingRecords[cleanRecordSpellName] then
+                    HeroStatsSettings.personalHealingRecords[cleanRecordSpellName] = {
+                        name = cleanRecordSpellName,
+                        casts = 0,
+                        critCasts = 0, 
+                        ticks = 0,
+                        normal = { amount = 0, target = "None", date = "None" },
+                        crit = { amount = 0, target = "None", date = "None" }
+                    }
+                end
+
+                local rec = HeroStatsSettings.personalHealingRecords[cleanRecordSpellName]
+
+                if isPeriodicTick then
+                    rec.ticks = (rec.ticks or 0) + 1
+                end
+            
+                local isNewRecord = false
+                local isCritRecord = false
+                local currentHeal = effective or 0
+
+                if isHealCrit then
+                    rec.critCasts = (rec.critCasts or 0) + 1 
+                
+                    if currentHeal > (rec.crit.amount or 0) then
+                        rec.crit.amount = currentHeal
+                        rec.crit.target = destName or "Unknown"
+                        rec.crit.date = date("%d/%m/%Y")
+                        isNewRecord = true
+                        isCritRecord = true
+                    end
+                else
+                    if currentHeal > (rec.normal.amount or 0) then
+                        rec.normal.amount = currentHeal
+                        rec.normal.target = destName or "Unknown"
+                        rec.normal.date = date("%d/%m/%Y")
+                        isNewRecord = true
+                    end
+                end
+
+                -- Invokes the unified record notification engine cleanly via single line
+                if isNewRecord then
+                    HeroStats_TriggerRecordNotification(cleanRecordSpellName, destName, currentHeal, isCritRecord, false)
+                end
+            end
+
+            -- Update internal session tracking tables for bars and reports
             if fullSpellName then
                 if not healer.spellHeals then healer.spellHeals = {} end
                 if not healer.spellHeals[fullSpellName] then 
@@ -823,7 +1146,6 @@ local function OnEvent_HEAL(eventType, sourceGUID, sourceName, sourceFlags, dest
                 healer.spellHeals[fullSpellName].effective = healer.spellHeals[fullSpellName].effective + effective
                 healer.spellHeals[fullSpellName].overheal = healer.spellHeals[fullSpellName].overheal + overheal
                 
-                -- NEW v0.10.0 FEATURE: Multi-dimensional sub-table tracking for spell heal crits breakdown
                 if not healer.spellHealCrits then healer.spellHealCrits = {} end
                 if not healer.spellHealCrits[fullSpellName] then
                     healer.spellHealCrits[fullSpellName] = { hits = 0, crits = 0, amt = 0 }
@@ -861,19 +1183,12 @@ local function OnEvent_HEAL(eventType, sourceGUID, sourceName, sourceFlags, dest
                     if isHealCrit then
                         overallHealer.spellHealCrits[fullSpellName].crits = overallHealer.spellHealCrits[fullSpellName].crits + 1
                     end
-                        
-                    -- Purely accumulate overall master effective yield safely
-                    if not overallHealer.spellMana then overallHealer.spellMana = {} end
-                    if not overallHealer.spellMana[fullSpellName] then
-                        overallHealer.spellMana[fullSpellName] = { manaUsed = 0, effective = 0 }
-                    end
-                    overallHealer.spellMana[fullSpellName].effective = overallHealer.spellMana[fullSpellName].effective + effective
                 end
             end
-            if coreFrame and coreFrame.RefreshStats then coreFrame.RefreshStats() end
+            coreFrame.RefreshStats()
         end
     end
-end;
+end
 
 --  DETECT REFLECTED SHIELDS & THORNS (v0.8.0 - Factual Source Routing Locked)
 local function OnEvent_SHIELD(eventType, sourceGUID, sourceName, sourceFlags, destGUID, destName, destFlags)
@@ -1410,7 +1725,7 @@ function HeroStats_ExecuteMasterWipeData()
     if HeroStats_UpdateSessionListWindow then HeroStats_UpdateSessionListWindow() end
     
     if HeroStats_Print then
-        HeroStats_Print("All combat session logs and Overall Raid Totals have been successfully wiped.")
+        HeroStats_Print("All Combat log and totals have been successfully wiped.")
     end
 end
 
@@ -1521,7 +1836,6 @@ function HeroStats_ReportCurrentPageToChat()
     local pageRecord = HeroStats_GetPageRecord(HeroStats_CurrentActivePage)
     local baseTitle = pageRecord and pageRecord.title or "HeroStats"
     local pageName = pageRecord and pageRecord.name;
-    if pageName =="FRONTPAGE" then return; end;
     
     -- Execute Text Outputs
     if isSoloWhisperLoop then
