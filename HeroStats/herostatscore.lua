@@ -670,7 +670,7 @@ function HeroStats_TriggerRecordNotification(spellName, targetName, amountValue,
         -- MODE 4: Group Announcement Instance Router (Guaranteed to be in a group here)
         elseif notifyMode == 4 then
             if isCrit then PlaySound(6674) else PlaySound(1204) end            
-            -- Prefixes your clean addon brand identifier for group blære-chat text
+            -- Prefixes your clean addon brand identifier for group blï¿½re-chat text
             local groupMsg = "HeroStats: " .. msg
             local channel = IsInRaid() and "RAID" or "PARTY"
             SendChatMessage(groupMsg, channel)
@@ -1056,6 +1056,18 @@ local function OnEvent_HEAL(eventType, sourceGUID, sourceName, sourceFlags, dest
             healer.effective = healer.effective + effective
             healer.overheal = healer.overheal + overheal
                 
+            -- FIXED v1.0.0b2: Crusader Shield auto-blocks fake Rogue/Warrior procs from polluting the Healing Crits engine
+            local isTrueHealerClass = (classFilename == "PRIEST") or (classFilename == "DRUID") or (classFilename == "PALADIN") or (classFilename == "SHAMAN")
+            
+            if isTrueHealerClass then
+                -- Accumulate master hits and crits ONLY for verified healing archetypes
+                healer.totalHealHits = (healer.totalHealHits or 0) + 1
+                if isHealCrit then
+                    healer.critHealHits = (healer.critHealHits or 0) + 1
+                    healer.critHealAmt = (healer.critHealAmt or 0) + effective
+                end
+            end
+                
             -- Accumulate master hits and crits for your new Healing Crits page
             healer.totalHealHits = (healer.totalHealHits or 0) + 1
             if isHealCrit then
@@ -1304,17 +1316,34 @@ local function OnEvent_UNIT_DIED(eventType, sourceGUID, sourceName, sourceFlags,
         -- Fetch the true class armor type from your live roster group cache
         local targetClass = groupRosterCache[cleanDestName] or "UNKNOWN"
             
-        local sessionHealers = HeroStats_GetActiveSessionHealers()
-        if sessionHealers then
-            local healer = HeroStats_GetOrCreateProfile(sessionHealers, destGUID, cleanDestName, targetClass)
-            healer.deaths = (healer.deaths or 0) + 1
-                
-            -- Accumulate cumulatively inside the master Overall database sheet
-            if HeroStatsSettings and HeroStatsSettings.overallData then
-                local overallHealer = HeroStats_GetOrCreateProfile(HeroStatsSettings.overallData, destGUID, cleanDestName, targetClass)
-                overallHealer.deaths = (overallHealer.deaths or 0) + 1
+        -- FIXED v1.0.0b2: Hunter Feign Death Validation Shield scans unit auras to intercept fake logs
+        local isFakeHunterDeath = false
+        if targetClass == "HUNTER" then
+            -- In WoW Classic/Era, group members can often be queried directly via their clean character name
+            for i = 1, 40 do
+                local buffName = UnitBuff(cleanDestName, i)
+                if not buffName then break end
+                if buffName == "Feign Death" then
+                    isFakeHunterDeath = true
+                    break
+                end
             end
-            if coreFrame.RefreshStats then coreFrame.RefreshStats() end
+        end
+
+        -- MASTER INGRESS BARRIER: Only registers the event if the unit is genuinely dead
+        if not isFakeHunterDeath then
+            local sessionHealers = HeroStats_GetActiveSessionHealers()
+            if sessionHealers then
+                local healer = HeroStats_GetOrCreateProfile(sessionHealers, destGUID, cleanDestName, targetClass)
+                healer.deaths = (healer.deaths or 0) + 1
+                    
+                -- Accumulate cumulatively inside the master Overall database sheet
+                if HeroStatsSettings and HeroStatsSettings.overallData then
+                    local overallHealer = HeroStats_GetOrCreateProfile(HeroStatsSettings.overallData, destGUID, cleanDestName, targetClass)
+                    overallHealer.deaths = (overallHealer.deaths or 0) + 1
+                end
+                if coreFrame.RefreshStats then coreFrame.RefreshStats() end
+            end
         end
     end
 end;
