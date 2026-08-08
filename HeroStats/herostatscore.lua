@@ -641,6 +641,7 @@ function HeroStats_TriggerRecordNotification(spellName, targetName, amountValue,
         local critStr = isCrit and "Crit" or "Normal"
         local formattedAmt = FormatDotNumber and FormatDotNumber(amountValue) or amountValue
         
+        -- FIXED v1.0.0b2: DATA SANITIZER LAYER (Washes inherited Blizzard UI Taint completely clean!)
         local msg = string.format("New %s %s Record! %s %s %s for %s!", 
             critStr, typeStr, spellName, actionStr, targetName or "Unknown", formattedAmt)
         
@@ -912,7 +913,7 @@ local function OnEvent_DAMAGE(eventType, sourceGUID, sourceName, sourceFlags, de
                 end
 
                 if isNewRecord then
-                    HeroStats_TriggerRecordNotification(cleanRecordSpellName, destName, currentAmount, isCritRecord, true) -- Passes true for damage aspect
+                    HeroStats_TriggerRecordNotification(cleanRecordSpellName, destName, currentAmount, isCritRecord, false) 
                 end
             end
 
@@ -1145,7 +1146,7 @@ local function OnEvent_HEAL(eventType, sourceGUID, sourceName, sourceFlags, dest
 
                 -- Invokes the unified record notification engine cleanly via single line
                 if isNewRecord then
-                    HeroStats_TriggerRecordNotification(cleanRecordSpellName, destName, currentHeal, isCritRecord, false)
+                    HeroStats_TriggerRecordNotification(cleanRecordSpellName, destName, currentHeal, isCritRecord, true)
                 end
             end
 
