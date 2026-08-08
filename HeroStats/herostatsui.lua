@@ -80,7 +80,7 @@ local CLASS_ICON_MAP = {
 
 -- 1. Create the Master Anchor Frame (Styled like a compact dropdown menu)
 local reportFrame = CreateFrame("Frame", "HeroStatsReportFrame", UIParent, "BackdropTemplate")
-reportFrame:SetSize(210, 185) -- Sleek, compact dimensions matching original dropdown
+reportFrame:SetSize(210, 140) -- Slimmed down perfectly since EditBox is completely removed!
 reportFrame:SetClampedToScreen(true)
 reportFrame:SetFrameStrata("DIALOG")
 reportFrame:SetFrameLevel(150)
@@ -99,89 +99,41 @@ reportFrame:SetBackdrop({
 reportFrame:SetBackdropColor(0.03, 0.03, 0.03, 0.98)
 reportFrame:SetBackdropBorderColor(0.25, 0.25, 0.25, 1)
 
--- 2. Create the Integrated, Primitive LUA EditBox (Positioned right inside the bottom area)
-local reportEditBox = CreateFrame("EditBox", "HeroStatsReportEditBox", reportFrame, "InputBoxTemplate")
-reportEditBox:SetSize(170, 20)
-reportEditBox:SetPoint("BOTTOM", reportFrame, "BOTTOM", 0, 12)
-reportEditBox:SetAutoFocus(false)
-reportEditBox:Hide()
-
-local inputLabel = reportFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-inputLabel:SetPoint("BOTTOMLEFT", reportEditBox, "TOPLEFT", 0, 2)
-inputLabel:Hide()
-
 -- Keep track of active context state inside file-level scope variable keys
-local currentActionType = nil
 local currentBarDataRef = nil
 local currentViewTypeRef = nil
 local currentDurationRef = nil
 
--- 3. Shared Function to Execute the Final Send Broadcast Call
-local function ExecuteFinalReportBroadcast()
-    local textValue = reportEditBox:GetText()
-    reportFrame:Hide()
-    
-    if not currentViewTypeRef or not currentBarDataRef then return end
-    
-    local isCustomChannel = (currentActionType == "CUSTOM")
-    local channelMode = isCustomChannel and "CHANNEL" or "WHISPER"
-    local isCustomFlag = isCustomChannel and true or false
-    local customParam = isCustomChannel and tonumber(textValue) or textValue
-    
-    if customParam then
-        local isPersonalRecordPage = (currentViewTypeRef == "PERSONAL_DMG_RECORDS" or currentViewTypeRef == "PERSONAL_HEAL_RECORDS")
-        
-        if isPersonalRecordPage then
-            if currentViewTypeRef == "PERSONAL_DMG_RECORDS" and HeroStats_Report_PersonalDamage then
-                HeroStats_Report_PersonalDamage(currentBarDataRef, channelMode, isCustomFlag, customParam)
-            elseif currentViewTypeRef == "PERSONAL_HEAL_RECORDS" and HeroStats_Report_PersonalHealing then
-                HeroStats_Report_PersonalHealing(currentBarDataRef, channelMode, isCustomFlag, customParam)
-            end
-        else
-            if HeroStats_Report_ActivePageOverview then
-                HeroStats_Report_ActivePageOverview(currentBarDataRef, currentViewTypeRef, currentDurationRef, channelMode, isCustomFlag, customParam)
-            end
-        end
-    end
-end
-
-reportEditBox:SetScript("OnEnterPressed", ExecuteFinalReportBroadcast)
-reportEditBox:SetScript("OnEscapePressed", function(self) reportFrame:Hide() end)
-
--- 4. Helper Factory to Construct Clean Clickable Dropdown Text Items
+-- 2. Helper Factory to Construct Clean Clickable Dropdown Text Items
 local function CreateDropdownTextItem(labelText, index, onClickFunc)
-    -- Creates an invisible button frame to handle the mouse hover and click events
     local itemFrame = CreateFrame("Button", nil, reportFrame)
     itemFrame:SetSize(190, 18)
     itemFrame:SetPoint("TOPLEFT", reportFrame, "TOPLEFT", 10, -8 - (index * 20))
     
-    -- Add the pure text string inside the item frame
     local text = itemFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     text:SetPoint("LEFT", itemFrame, "LEFT", 4, 0)
     text:SetText(labelText)
     
-    -- FIXED v1.0.0b2: Style Router assigns crisp white to reports, and classic gold exclusively to Cancel
     local isCancelButton = (labelText == "Cancel")
     if isCancelButton then
-        text:SetTextColor(0.95, 0.82, 0) -- Restores classic gold color for Cancel button layout
+        text:SetTextColor(0.95, 0.82, 0) -- Gold for Cancel
     else
-        text:SetTextColor(1, 1, 1) -- Enforces raw crisp white text color for all standard report rows
+        text:SetTextColor(1, 1, 1) -- Crisp White for Report lines
     end
     
-    -- Highlight effect: Text shifts dynamically or remains highlighted upon mouse hover state
     itemFrame:SetScript("OnEnter", function() 
         if isCancelButton then 
-            text:SetTextColor(1, 1, 1) -- Cancel turns white on mouse hover layout
+            text:SetTextColor(1, 1, 1) 
         else
-            text:SetTextColor(0.7, 0.7, 0.7) -- White report lines dim slightly to a sleek light grey on hover!
+            text:SetTextColor(0.7, 0.7, 0.7) -- Dims white lines to light grey on hover
         end
     end)
     
     itemFrame:SetScript("OnLeave", function() 
         if isCancelButton then 
-            text:SetTextColor(0.95, 0.82, 0) -- Restore Cancel back to gold
+            text:SetTextColor(0.95, 0.82, 0) 
         else
-            text:SetTextColor(1, 1, 1) -- Restore report rows back to crisp white
+            text:SetTextColor(1, 1, 1) 
         end
     end)
     
@@ -227,54 +179,43 @@ CreateDropdownTextItem("Report to Say (Local Zone)", 2, function()
     end
 end)
 
--- Line 4: Report to Custom Channel...
-CreateDropdownTextItem("Report to Custom Channel...", 3, function()
-    currentActionType = "CUSTOM"
-    inputLabel:SetText("Enter channel number (e.g., 5):")
-    reportEditBox:SetText("")
-    reportFrame:SetSize(210, 240) -- Expand frame height dynamically to give room for the text input field
-    inputLabel:Show()
-    reportEditBox:Show()
-    reportEditBox:SetFocus()
+-- Line 4: Whisper Player...
+CreateDropdownTextItem("Whisper Player...", 3, function()
+    reportFrame:Hide()
+    -- Directly invokes your sterile Whisper target input popup dialog frame cleanly
+    StaticPopup_Show("HEROSTATS_REPORT_WHISPER_INPUT", nil, nil, { data = currentBarDataRef, viewType = currentViewTypeRef, duration = currentDurationRef })
 end)
 
--- Line 5: Whisper Player...
-CreateDropdownTextItem("Whisper Player...", 4, function()
-    currentActionType = "WHISPER"
-    inputLabel:SetText("Enter target character name:")
-    reportEditBox:SetText("")
-    reportFrame:SetSize(210, 240) -- Expand frame height dynamically to give room for the text input field
-    inputLabel:Show()
-    reportEditBox:Show()
-    reportEditBox:SetFocus()
+-- Line 5: NEW FIXED v1.0.0b2: Local Chat Output (Replaces the bugged Custom Channel option)
+-- COMMENT: Enforces routing straight into the sterile "LOCAL" chat printer bucket to secure copy-paste operations
+CreateDropdownTextItem("Report to Local Chat", 4, function()
+    reportFrame:Hide()
+    if currentViewTypeRef == "PERSONAL_DMG_RECORDS" and HeroStats_Report_PersonalDamage then
+        HeroStats_Report_PersonalDamage(currentBarDataRef, "LOCAL")
+    elseif currentViewTypeRef == "PERSONAL_HEAL_RECORDS" and HeroStats_Report_PersonalHealing then
+        HeroStats_Report_PersonalHealing(currentBarDataRef, "LOCAL")
+    elseif HeroStats_Report_ActivePageOverview then
+        HeroStats_Report_ActivePageOverview(currentBarDataRef, currentViewTypeRef, currentDurationRef, "LOCAL")
+    end
 end)
 
 -- Line 6: Cancel
-CreateDropdownTextItem("Cancel", 6, function() reportFrame:Hide() end)
+CreateDropdownTextItem("Cancel", 5, function() reportFrame:Hide() end)
 
--- 5. PUBLIC API ENTRY POINT: Anchor dynamically directly beneath your shoutButton element upon invocation!
+-- 3. PUBLIC API ENTRY POINT: Anchor dynamically directly beneath your shoutButton element upon invocation
 function HeroStats_OpenReportDialog(viewType, barData, duration, parentButton)
     if not barData then return end
     
     currentViewTypeRef = viewType
     currentBarDataRef = barData
     currentDurationRef = duration
-    currentActionType = nil
     
-    -- Reset layout bounds back to clean baseline state
-    reportFrame:SetSize(210, 160)
-    inputLabel:Hide()
-    reportEditBox:Hide()
-    reportEditBox:SetText("")
-    
-    -- DYNAMIC ALIGNMENT SHIELD: Snaps the frame directly beneath your physical chat bubble icon!
-    local anchorElement = parentButton or HeroStats_ShoutButtonGlobalName or shoutButton
+    -- Snap the frame right below your physical chat bubble icon
+    local anchorElement = parentButton or shoutButton
     if anchorElement then
         reportFrame:ClearAllPoints()
-        -- Sets the top-right of your custom dialog to snap straight to the bottom-right of your shoutButton icon
         reportFrame:SetPoint("TOPRIGHT", anchorElement, "BOTTOMRIGHT", 0, -2)
     else
-        -- Absolute bulletproof safety fallback centered in case reference resolving slips
         reportFrame:ClearAllPoints()
         reportFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     end
