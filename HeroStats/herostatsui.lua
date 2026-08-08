@@ -995,83 +995,13 @@ function HeroStats_RenderRaidBars(sortedData, maxVal, viewType, totalRaidEffecti
                 -- FREEZE SCOPE: Capture active data pointers and rendering states instantly
                 local clickedData = data
                 local clickedViewType = viewType or pageName
-                local currentFightDuration = fightSeconds or 1
+                local currentFightDuration = fightSeconds or nil -- FIXED b2: Nil forces comm layer to fetch true duration
 
-                -- FIXED v1.0.0b1: Parameter isolation shield blocks Blizzard frame references from leaking into comm layers
-                local function ExecuteDirectReport(targetChannel)
-                    -- FORCED ISOLATION: Explicitly passes the frozen 'clickedData' object as argument 1
-                    if clickedViewType == "DAMAGE_DONE" and HeroStats_Report_DamageDone then
-                        HeroStats_Report_DamageDone(clickedData, targetChannel, false, nil, currentFightDuration)
-                    elseif clickedViewType == "HEALING_DONE" and HeroStats_Report_HealingDone then
-                        HeroStats_Report_HealingDone(clickedData, targetChannel, false, nil, currentFightDuration)
-                    elseif clickedViewType == "DMG_CRIT" and HeroStats_Report_DamageCrits then
-                        HeroStats_Report_DamageCrits(clickedData, targetChannel, false, nil)
-                    elseif clickedViewType == "HEAL_CRIT" and HeroStats_Report_HealingCrits then
-                        HeroStats_Report_HealingCrits(clickedData, targetChannel, false, nil)
-                    elseif clickedViewType == "DMG_TAKEN" and HeroStats_Report_DamageTaken then
-                        HeroStats_Report_DamageTaken(clickedData, targetChannel, false, nil, currentFightDuration)
-                    elseif clickedViewType == "EFFICIENCY" and HeroStats_Report_Efficiency then
-                        HeroStats_Report_Efficiency(clickedData, targetChannel, false, nil)
-                    elseif clickedViewType == "MANA_EFF" and HeroStats_Report_ManaEff then
-                        HeroStats_Report_ManaEff(clickedData, targetChannel, false, nil)
-                    elseif clickedViewType == "MANA_GAINED" and HeroStats_Report_ManaGained then
-                        HeroStats_Report_ManaGained(clickedData, targetChannel, false, nil)
-                    elseif clickedViewType == "DISPELS" and HeroStats_Report_Dispels then
-                        HeroStats_Report_Dispels(clickedData, targetChannel, false, nil)
-                    elseif clickedViewType == "BUFFS" and HeroStats_Report_Buffs then
-                        HeroStats_Report_Buffs(clickedData, targetChannel, false, nil)
-                    elseif clickedViewType == "DEATHS" and HeroStats_Report_Deaths then
-                        HeroStats_Report_Deaths(clickedData, targetChannel, false, nil)
-                    elseif clickedViewType == "RESURRECTS" and HeroStats_Report_Resurrects then
-                        HeroStats_Report_Resurrects(clickedData, targetChannel, false, nil)
-                    elseif clickedViewType == "PERSONAL_DMG_RECORDS" and HeroStats_Report_PersonalDamage then
-                        HeroStats_Report_PersonalDamage(clickedData, targetChannel, false, nil)
-                    elseif clickedViewType == "PERSONAL_HEAL_RECORDS" and HeroStats_Report_PersonalHealing then
-                        HeroStats_Report_PersonalHealing(clickedData, targetChannel, false, nil)
-                    end
+                -- TAINT-FREE COUPLING: Direct ingress path wakes up your independent custom report frame dialog
+                if HeroStats_OpenReportDialog then
+                    -- FIXED v1.0.0b2: Passes 'self' (the physical bar frame) to anchor your dropdown layout cleanly at the cursor
+                    HeroStats_OpenReportDialog(clickedViewType, clickedData, currentFightDuration, self)
                 end
-
-                local menuFrame = HeroStatsReportMenuFrame or CreateFrame("Frame", "HeroStatsReportMenuFrame", UIParent, "UIDropdownMenuTemplate")
-
-                -- Dynamic Ad-Hoc Menu Map layout routing securely inside UIDropDownMenu_Initialize
-                local menuList = {
-                    { text = "Select Target Channel:", isTitle = true, notCheckable = true },
-                    
-                    { text = "Report to Guild Chat", notCheckable = true, func = function() 
-                        ExecuteDirectReport("GUILD") -- Handled instantly in 1 line!
-                    end },
-                    
-                    { text = "Report to Instance (Raid/Party)", notCheckable = true, func = function() 
-                        local channel = IsInRaid() and "RAID" or (IsInGroup() and "PARTY" or "SAY")
-                        ExecuteDirectReport(channel) -- Handled instantly in 1 line!
-                    end },
-                    
-                    { text = "Report to Say (Local Zone)", notCheckable = true, func = function() 
-                        ExecuteDirectReport("SAY") -- Handled instantly in 1 line!
-                    end },
-                    
-                    { text = "Report to Custom Channel...", notCheckable = true, func = function() 
-                        local dialog = StaticPopup_Show("HEROSTATS_REPORT_CHANNEL_INPUT")
-                        if dialog then dialog.data = { data = clickedData, viewType = clickedViewType, duration = currentFightDuration } end 
-                    end },
-                    
-                    { text = "Whisper Player...", notCheckable = true, func = function() 
-                        local dialog = StaticPopup_Show("HEROSTATS_REPORT_WHISPER_INPUT")
-                        if dialog then dialog.data = { data = clickedData, viewType = clickedViewType, duration = currentFightDuration } end 
-                    end },
-                    
-                    { text = "Cancel", notCheckable = true, func = function() CloseDropDownMenus() end }
-                }
-                
-                -- Master initialization injection mapping loop (Universal Blizzard drop-down motor)
-                UIDropDownMenu_Initialize(menuFrame, function(self, level)
-                    for _, item in ipairs(menuList) do
-                        UIDropDownMenu_AddButton(item, level)
-                    end
-                end, "MENU")
-                
-                -- Toggle the drop-down menu asset securely anchored onto your hardware cursor location
-                ToggleDropDownMenu(1, nil, menuFrame, "cursor", 0, 0)
             end
         end)
 
